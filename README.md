@@ -2,6 +2,27 @@
 
 **Digital lab records, faculty evaluation, student submissions, admin workflows, optional exams, and gamification** — built with **React (Vite)**, **Supabase** (auth + Postgres + storage), and a **Node** API (`server.cjs`) for manuals, gamification, admin operations, and code execution.
 
+## About
+
+A full-stack digital lab record management system for colleges and universities built with React, TypeScript, Node.js, and Supabase.
+
+### Key Features
+
+- Student experiment submissions
+- Faculty evaluation and grading
+- Admin management dashboard
+- Exam management and monitoring
+- Gamification and leaderboard system
+- PDF generation and manual handling
+- Role-based authentication and access control
+
+### Technology Stack
+
+- Frontend: React, Vite, TypeScript, Tailwind CSS
+- Backend: Node.js, Express
+- Database & Auth: Supabase
+- Deployment: Vercel + Render
+
 ---
 
 ## Table of contents
