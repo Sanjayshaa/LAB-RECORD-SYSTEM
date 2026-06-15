@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.env
+.env.*
+.cursor
+*.log
+src
+public
+coverage
+tmp
+.tmp-*
+README.md
+docs
+*.md
