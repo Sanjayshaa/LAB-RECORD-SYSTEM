@@ -37,7 +37,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/Users/sanjay/Projects/Lab-Record-system/backend/proctor/.venv"
+VIRTUAL_ENV="/Users/sanjay/Library/Mobile Documents/com~apple~CloudDocs/Projects/Lab-Record-system/backend/proctor/.venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
