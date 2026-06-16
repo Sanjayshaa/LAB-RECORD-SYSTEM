@@ -26,3 +26,12 @@ secrets.json
 test-results/
 playwright-report/
 playwright/.cache/
+
+# Python virtual environments
+.venv/
+venv/
+backend/proctor/.venv/
+
+# Python cache
+__pycache__/
+*.pyc
