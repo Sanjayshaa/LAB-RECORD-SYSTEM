@@ -141,11 +141,8 @@ async function fetchProgressFromBackendApi(userId: string): Promise<Gamification
 export async function getUserProgress(userId: string): Promise<GamificationProgress> {
   if (!userId || disableGamificationQueries) return { ...DEFAULT_PROGRESS };
 
-  const synced = await trySyncStudentProgress(userId);
-  if (synced) {
-    return synced;
-  }
-
+  // Do not auto-sync on every dashboard/profile load.
+  // Progress is synced by submission/evaluation flows and fetched here.
   const fromApi = await fetchProgressFromBackendApi(userId);
   if (fromApi) {
     return fromApi;

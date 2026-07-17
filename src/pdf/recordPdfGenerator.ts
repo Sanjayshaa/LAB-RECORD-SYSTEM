@@ -257,7 +257,7 @@ function resolveWindowImage(
     | "FACULTY_SIGNATURE_BASE64"
 ): string | null {
   if (typeof window === "undefined") return null;
-  return toDataImage((window as Window & Record<string, unknown>)[key]);
+  return toDataImage((window as any)[key]);
 }
 
 export function createManualImageEmbeddingExample() {
@@ -314,6 +314,7 @@ async function resolveBundledManualAssets(): Promise<ManualAssets> {
   return {
     headerBanner,
     collegeLogoLeft: collegeLogo,
+    accreditationLogoRight: headerBanner,
   };
 }
 
@@ -534,9 +535,9 @@ function resolveExperimentFinalMarks(
   return { finalMarks, facultyVerified, aiScoreOutOf10 };
 }
 
-function normalizeExperiments(data: UnifiedStudentDataResult): RecordExperiment[] {
+function normalizeExperiments(data: UnifiedStudentDataResult, subjectName?: string): RecordExperiment[] {
   const rows = Array.isArray(data.experiments) ? data.experiments : [];
-  const useOooseTitles = isOOSESubject(data?.subjectName);
+  const useOooseTitles = isOOSESubject(subjectName);
   if (!rows.length) {
     return [
       {
@@ -773,6 +774,14 @@ function buildTopHeader(
   if (!showCollegeHeader) {
     return { text: "", margin: [0, 0, 0, 8] as [number, number, number, number] };
   }
+  if (assets.headerBanner) {
+    return {
+      image: assets.headerBanner,
+      width: 511.28,
+      alignment: "center" as const,
+      margin: [0, 0, 0, compact ? 8 : 10] as [number, number, number, number],
+    };
+  }
   const leftLogoWidth = compact ? 52 : 60;
   const rightLogoWidth = compact ? 110 : 120;
   const headingSize = compact ? 8.8 : 10.2;
@@ -822,52 +831,66 @@ function buildTopHeader(
 function buildFrontPages(record: ManualRecordData, frontMatter: ManualFrontMatter, assets: Required<ManualAssets>) {
   const outcomesRows = frontMatter.courseOutcomes.map((item) => [item.code, item.description]);
   const compactTopHeaderCourseObjectives = buildTopHeader(record, assets, true, { showLeftLogo: false });
-  const fullHeaderBlock = {
-    table: {
-      widths: [52, "*", 110],
-      body: [[
-        assets.collegeLogoLeft
-          ? { image: assets.collegeLogoLeft, fit: [52, 52], alignment: "left" as const }
-          : { text: "" },
-        {
-          stack: [
-            { text: "St. PETER'S", color: "#c1121f", bold: true, fontSize: 17, alignment: "center" as const },
-            { text: "COLLEGE OF ENGINEERING AND TECHNOLOGY", color: "#c1121f", bold: true, fontSize: 8.8, alignment: "center" as const },
-            { text: "(An Autonomous Institution)", color: "#c1121f", bold: true, fontSize: 7.3, alignment: "center" as const, margin: [0, 1, 0, 0] as [number, number, number, number] },
-            { text: "Affiliated to Anna University | Approved by AICTE", bold: true, fontSize: 7.3, alignment: "center" as const },
-            { text: "Avadi, Chennai, Tamilnadu - 600 054", bold: true, fontSize: 7.3, alignment: "center" as const },
-          ],
+  const fullHeaderBlock = assets.headerBanner
+    ? {
+        image: assets.headerBanner,
+        width: 511.28,
+        alignment: "center" as const,
+        margin: [0, 0, 0, 14] as [number, number, number, number],
+      }
+    : {
+        table: {
+          widths: [52, "*", 110],
+          body: [[
+            assets.collegeLogoLeft
+              ? { image: assets.collegeLogoLeft, fit: [52, 52], alignment: "left" as const }
+              : { text: "" },
+            {
+              stack: [
+                { text: "St. PETER'S", color: "#c1121f", bold: true, fontSize: 17, alignment: "center" as const },
+                { text: "COLLEGE OF ENGINEERING AND TECHNOLOGY", color: "#c1121f", bold: true, fontSize: 8.8, alignment: "center" as const },
+                { text: "(An Autonomous Institution)", color: "#c1121f", bold: true, fontSize: 7.3, alignment: "center" as const, margin: [0, 1, 0, 0] as [number, number, number, number] },
+                { text: "Affiliated to Anna University | Approved by AICTE", bold: true, fontSize: 7.3, alignment: "center" as const },
+                { text: "Avadi, Chennai, Tamilnadu - 600 054", bold: true, fontSize: 7.3, alignment: "center" as const },
+              ],
+            },
+            assets.accreditationLogoRight
+              ? { image: assets.accreditationLogoRight, fit: [110, 48], alignment: "right" as const }
+              : { text: "" },
+          ]],
         },
-        assets.accreditationLogoRight
-          ? { image: assets.accreditationLogoRight, fit: [110, 48], alignment: "right" as const }
-          : { text: "" },
-      ]],
-    },
-    layout: NO_BORDER_LAYOUT,
-    margin: [0, 0, 0, 14] as [number, number, number, number],
-  };
+        layout: NO_BORDER_LAYOUT,
+        margin: [0, 0, 0, 14] as [number, number, number, number],
+      };
   /** Same as full header but no top-left college logo (Institution Vision page only). */
-  const fullHeaderBlockNoLeftLogo = {
-    table: {
-      widths: ["*", 110],
-      body: [[
-        {
-          stack: [
-            { text: "St. PETER'S", color: "#c1121f", bold: true, fontSize: 17, alignment: "center" as const },
-            { text: "COLLEGE OF ENGINEERING AND TECHNOLOGY", color: "#c1121f", bold: true, fontSize: 8.8, alignment: "center" as const },
-            { text: "(An Autonomous Institution)", color: "#c1121f", bold: true, fontSize: 7.3, alignment: "center" as const, margin: [0, 1, 0, 0] as [number, number, number, number] },
-            { text: "Affiliated to Anna University | Approved by AICTE", bold: true, fontSize: 7.3, alignment: "center" as const },
-            { text: "Avadi, Chennai, Tamilnadu - 600 054", bold: true, fontSize: 7.3, alignment: "center" as const },
-          ],
+  const fullHeaderBlockNoLeftLogo = assets.headerBanner
+    ? {
+        image: assets.headerBanner,
+        width: 511.28,
+        alignment: "center" as const,
+        margin: [0, 0, 0, 14] as [number, number, number, number],
+      }
+    : {
+        table: {
+          widths: ["*", 110],
+          body: [[
+            {
+              stack: [
+                { text: "St. PETER'S", color: "#c1121f", bold: true, fontSize: 17, alignment: "center" as const },
+                { text: "COLLEGE OF ENGINEERING AND TECHNOLOGY", color: "#c1121f", bold: true, fontSize: 8.8, alignment: "center" as const },
+                { text: "(An Autonomous Institution)", color: "#c1121f", bold: true, fontSize: 7.3, alignment: "center" as const, margin: [0, 1, 0, 0] as [number, number, number, number] },
+                { text: "Affiliated to Anna University | Approved by AICTE", bold: true, fontSize: 7.3, alignment: "center" as const },
+                { text: "Avadi, Chennai, Tamilnadu - 600 054", bold: true, fontSize: 7.3, alignment: "center" as const },
+              ],
+            },
+            assets.accreditationLogoRight
+              ? { image: assets.accreditationLogoRight, fit: [110, 48], alignment: "right" as const }
+              : { text: "" },
+          ]],
         },
-        assets.accreditationLogoRight
-          ? { image: assets.accreditationLogoRight, fit: [110, 48], alignment: "right" as const }
-          : { text: "" },
-      ]],
-    },
-    layout: NO_BORDER_LAYOUT,
-    margin: [0, 0, 0, 14] as [number, number, number, number],
-  };
+        layout: NO_BORDER_LAYOUT,
+        margin: [0, 0, 0, 14] as [number, number, number, number],
+      };
   const coverDepartment =
     cleanText(record.departmentName).toUpperCase() === "DEPARTMENT OF IT"
       ? "DEPARTMENT OF INFORMATION TECHNOLOGY"
@@ -876,38 +899,45 @@ function buildFrontPages(record: ManualRecordData, frontMatter: ManualFrontMatte
     {
       stack: [
         { text: "", margin: [0, 8, 0, 0] as [number, number, number, number] },
-        {
-          table: {
-            widths: ["*", 110],
-            body: [[
-              {
-                stack: [
-                  { text: "St. PETER'S", bold: true, color: "#d00000", fontSize: 22, alignment: "center" as const },
+        assets.headerBanner
+          ? {
+              image: assets.headerBanner,
+              width: 511.28,
+              alignment: "center" as const,
+              margin: [0, 0, 0, 26] as [number, number, number, number],
+            }
+          : {
+              table: {
+                widths: ["*", 110],
+                body: [[
                   {
-                    text: "COLLEGE OF ENGINEERING AND TECHNOLOGY",
-                    bold: true,
-                    color: "#d00000",
-                    fontSize: 15,
-                    alignment: "center" as const,
+                    stack: [
+                      { text: "St. PETER'S", bold: true, color: "#d00000", fontSize: 22, alignment: "center" as const },
+                      {
+                        text: "COLLEGE OF ENGINEERING AND TECHNOLOGY",
+                        bold: true,
+                        color: "#d00000",
+                        fontSize: 15,
+                        alignment: "center" as const,
+                      },
+                      { text: "(An Autonomous Institution)", bold: true, color: "#d00000", fontSize: 10.5, alignment: "center" as const },
+                      {
+                        text: "Affiliated to Anna University | Approved by AICTE",
+                        bold: true,
+                        fontSize: 8.8,
+                        alignment: "center" as const,
+                      },
+                      { text: "AVADI, CHENNAI - 600054.", bold: true, fontSize: 8.8, alignment: "center" as const },
+                    ],
                   },
-                  { text: "(An Autonomous Institution)", bold: true, color: "#d00000", fontSize: 10.5, alignment: "center" as const },
-                  {
-                    text: "Affiliated to Anna University | Approved by AICTE",
-                    bold: true,
-                    fontSize: 8.8,
-                    alignment: "center" as const,
-                  },
-                  { text: "AVADI, CHENNAI - 600054.", bold: true, fontSize: 8.8, alignment: "center" as const },
-                ],
+                  assets.accreditationLogoRight
+                    ? { image: assets.accreditationLogoRight, width: 98, alignment: "center" as const }
+                    : { text: "" },
+                ]],
               },
-              assets.accreditationLogoRight
-                ? { image: assets.accreditationLogoRight, width: 98, alignment: "center" as const }
-                : { text: "" },
-            ]],
-          },
-          layout: NO_BORDER_LAYOUT,
-          margin: [0, 0, 0, 26] as [number, number, number, number],
-        },
+              layout: NO_BORDER_LAYOUT,
+              margin: [0, 0, 0, 26] as [number, number, number, number],
+            },
         {
           text: coverDepartment,
           bold: true,
@@ -1220,7 +1250,7 @@ function buildExperimentPages(
 
 export function buildAnnaManualDocDefinition(payload: RecordPdfPayload) {
   const profile = payload.data.profile;
-  const experiments = normalizeExperiments(payload.data);
+  const experiments = normalizeExperiments(payload.data, payload.subjectName);
   const frontMatter = mergeFrontMatter(payload.frontMatter);
   const assets = resolveAssets(payload.assets);
   const today = new Date().toLocaleDateString("en-GB");

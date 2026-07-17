@@ -39,10 +39,22 @@ export async function evaluateWithLocalModel(input: Input): Promise<Output> {
     const {
       data: { session },
     } = await supabase.auth.getSession();
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+
+    console.log("[AI] Session:", session);
+    console.log("[AI] Access token exists:", !!session?.access_token);
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
     if (session?.access_token) {
       headers.Authorization = `Bearer ${session.access_token}`;
     }
+
+    console.log("[AI] Request headers:", {
+      ...headers,
+      Authorization: headers.Authorization ? "Bearer <present>" : undefined,
+    });
 
     const response = await fetch(`${getApiBaseUrl()}/api/ai/local-evaluate`, {
       method: "POST",
@@ -80,7 +92,9 @@ export async function evaluateWithLocalModel(input: Input): Promise<Output> {
       marksOutOf10,
       source: "local_model",
     };
-  } catch {
+  } catch (error) {
+    console.error("[AI] local-evaluate failed:", error);
+
     return {
       ai_score: fallback.aiScore,
       confidence: fallback.confidence,

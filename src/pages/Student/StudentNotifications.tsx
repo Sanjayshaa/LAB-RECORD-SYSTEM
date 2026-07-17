@@ -1,30 +1,15 @@
-import NotificationComposerCard from "@/components/notifications/NotificationComposerCard";
 import { supabase } from "@/lib/supabase";
 import { useCallback, useEffect, useState } from "react";
-import { getFacultyInboxNotifications } from "@/services/studentNotificationsService";
+import { getStudentInboxNotifications } from "@/services/studentNotificationsService";
 
-export default function FacultyNotifications() {
+export default function StudentNotifications() {
   const [department, setDepartment] = useState("");
   const [messages, setMessages] = useState<Array<{ id: string; title: string; message: string; createdAt: string | null }>>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchMessages = useCallback(async () => {
+  const fetchMessages = useCallback(async (dept: string) => {
     setLoading(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    let currentDept = department;
-    if (user && !currentDept) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("department")
-        .eq("id", user.id)
-        .maybeSingle();
-      if (data?.department) {
-        currentDept = String(data.department).trim();
-      }
-    }
-    const result = await getFacultyInboxNotifications(currentDept || null, 10);
+    const result = await getStudentInboxNotifications(dept || null, 20);
     if (result.success) {
       setMessages(
         result.data.map((item) => ({
@@ -38,8 +23,7 @@ export default function FacultyNotifications() {
       setMessages([]);
     }
     setLoading(false);
-  }, [department]);
-
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -54,26 +38,42 @@ export default function FacultyNotifications() {
         .eq("id", user.id)
         .maybeSingle();
       if (!mounted) return;
-      setDepartment(String(data?.department || "").trim());
+      const dept = String(data?.department || "").trim();
+      setDepartment(dept);
+      void fetchMessages(dept);
     })();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [fetchMessages]);
 
   useEffect(() => {
-    void fetchMessages();
-  }, [fetchMessages]);
+    if (!department) return;
+
+    const channel = supabase
+      .channel("student-notifications-page-live")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "student_notifications",
+        },
+        () => {
+          void fetchMessages(department);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [department, fetchMessages]);
 
   return (
     <div className="mx-auto max-w-5xl">
-      <NotificationComposerCard
-        title="Faculty Notifications to Students"
-        defaultDepartment={department}
-        onSent={fetchMessages}
-      />
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="mb-2 text-sm font-semibold text-slate-900">Recent Messages</h3>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h3 className="mb-2 text-sm font-semibold text-slate-900 font-sans">Recent Messages</h3>
         {loading ? <p className="text-xs text-slate-500">Loading...</p> : null}
         {!loading && messages.length === 0 ? (
           <p className="text-xs text-slate-500">No recent messages.</p>

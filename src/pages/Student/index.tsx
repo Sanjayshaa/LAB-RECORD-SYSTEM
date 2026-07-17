@@ -12,6 +12,7 @@ const StudentMarks = lazy(() => import("./StudentMarks"));
 const StudentExamMarks = lazy(() => import("./StudentExamMarks"));
 const StudentResults = lazy(() => import("./StudentResults"));
 const StudentProfile = lazy(() => import("./StudentProfile"));
+const StudentNotifications = lazy(() => import("./StudentNotifications"));
 
 function StudentRouteLoader() {
   return (
@@ -38,6 +39,7 @@ export default function Student() {
           <Route path="exam-marks" element={<StudentExamMarks />} />
           <Route path="results" element={<StudentResults />} />
           <Route path="profile" element={<StudentProfile />} />
+          <Route path="notifications" element={<StudentNotifications />} />
         </Route>
       </Routes>
     </Suspense>

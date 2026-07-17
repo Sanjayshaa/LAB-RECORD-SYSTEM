@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { visualizer } from "rollup-plugin-visualizer";
 import path from "path";
 
 /** When Vercel builds without VITE_MANUAL_API_URL, the bundle otherwise falls back to localhost and breaks production. Override anytime with VITE_MANUAL_API_URL in Vercel env. */
@@ -18,7 +19,14 @@ export default defineConfig(({ mode }) => {
   const viteManualApi = fromEnv || (useVercelDefault ? DEFAULT_MANUAL_API_FOR_VERCEL_PROD : "");
 
   return {
-  plugins: [react()],
+  plugins: [
+    react(),
+    visualizer({
+      filename: "stats.html",
+      gzipSize: true,
+      open: true,
+    }),
+  ],
   base: "/", // required for Vercel SPA
   resolve: {
     alias: {

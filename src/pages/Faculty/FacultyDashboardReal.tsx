@@ -488,12 +488,25 @@ export default function FacultyDashboardReal() {
         }));
       setRecentSubmissions(recent);
 
-      const messages = await getFacultyInboxNotifications(5);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      let facultyDept = null;
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("department")
+          .eq("id", user.id)
+          .maybeSingle();
+        facultyDept = String(profile?.department || "").trim() || null;
+      }
+      const messages = await getFacultyInboxNotifications(facultyDept, 5);
       setRecentMessages(
         messages.success
           ? messages.data.map((m) => ({ id: m.id, title: m.title, message: m.message }))
           : []
       );
+
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load dashboard.");
       setRows([]);

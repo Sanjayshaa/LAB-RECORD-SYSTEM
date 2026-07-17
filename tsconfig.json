@@ -27,7 +27,7 @@
     /* ===== Performance ===== */
     "skipLibCheck": true,
     "useDefineForClassFields": true,
-    "ignoreDeprecations": "6.0",
+
 
     /* ===== Path Alias (REQUIRED for shadcn) ===== */
     "baseUrl": ".",

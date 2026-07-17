@@ -69,6 +69,7 @@ const navItems = [
   { icon: Award, label: "Marks", path: "/student/marks", color: "amber" },
   { icon: ClipboardList, label: "Exam Results", path: "/student/exam-marks", color: "blue" },
   { icon: Table2, label: "Results", path: "/student/results", color: "indigo" },
+  { icon: MessageSquare, label: "Notifications", path: "/student/notifications", color: "indigo" },
   { icon: User, label: "Profile", path: "/student/profile", color: "emerald" },
 ] as const;
 
@@ -279,11 +280,35 @@ export default function StudentLayout() {
   }, [location.pathname, location.search]);
 
   useEffect(() => {
+    void loadStudentMessages();
+
+    const channel = supabase
+      .channel("student-notifications-live")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "student_notifications",
+        },
+        () => {
+          void loadStudentMessages();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [studentDept]);
+
+  useEffect(() => {
     if (!notificationOpen) return;
     const seenAt = new Date().toISOString();
     setLastSeenAt(seenAt);
     localStorage.setItem(MESSAGE_CENTER_SEEN_AT_KEY, seenAt);
   }, [notificationOpen]);
+
 
   // Save sidebar state to localStorage
   const toggleSidebar = () => {

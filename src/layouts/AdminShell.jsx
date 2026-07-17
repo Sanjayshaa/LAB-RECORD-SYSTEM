@@ -169,11 +169,35 @@ export default function AdminShell({ title, children }) {
   }, [location.pathname]);
 
   useEffect(() => {
+    void loadAdminNotifications();
+
+    const channel = supabase
+      .channel("admin-notifications-live")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "student_notifications",
+        },
+        () => {
+          void loadAdminNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!notificationOpen) return;
     const seenAt = new Date().toISOString();
     setLastSeenAt(seenAt);
     localStorage.setItem(ADMIN_NOTIFICATIONS_SEEN_KEY, seenAt);
   }, [notificationOpen]);
+
 
   return (
     <div className="faculty-bg-vibrant min-h-screen text-slate-900">

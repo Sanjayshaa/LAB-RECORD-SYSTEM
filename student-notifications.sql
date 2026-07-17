@@ -126,3 +126,7 @@ begin
       );
   end if;
 end $$;
+
+-- Enable Realtime (optional, run in Supabase SQL editor if not already done)
+-- alter publication supabase_realtime add table public.student_notifications;
+

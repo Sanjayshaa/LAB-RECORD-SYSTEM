@@ -287,11 +287,35 @@ export default function FacultyLayout() {
   }, [location.pathname]);
 
   useEffect(() => {
+    void loadFacultyNotifications();
+
+    const channel = supabase
+      .channel("faculty-notifications-live")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "student_notifications",
+        },
+        () => {
+          void loadFacultyNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!notificationOpen) return;
     const seenAt = new Date().toISOString();
     setLastSeenAt(seenAt);
     localStorage.setItem(FACULTY_NOTIFICATIONS_SEEN_KEY, seenAt);
   }, [notificationOpen]);
+
 
   useEffect(() => {
     if (needsSubjectSelection) {
