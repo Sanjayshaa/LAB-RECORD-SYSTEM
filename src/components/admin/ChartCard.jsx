@@ -68,11 +68,41 @@ export default function ChartCard({
           </LineChart>
         ) : (
           <AreaChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey={xKey} tick={{ fill: "#64748b", fontSize: 11 }} />
-            <YAxis tick={{ fill: "#64748b", fontSize: 11 }} />
-            <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 10 }} />
-            <Area type="monotone" dataKey={dataKey} stroke={colors[0]} fill={`${colors[0]}33`} />
+            <defs>
+              <linearGradient id="chartAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={colors[0] || "#6366f1"} stopOpacity={0.4}/>
+                <stop offset="95%" stopColor={colors[0] || "#6366f1"} stopOpacity={0.01}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis 
+              dataKey={xKey} 
+              tickLine={false} 
+              axisLine={false} 
+              tick={{ fill: "#94a3b8", fontSize: 10 }} 
+              dy={6}
+            />
+            <YAxis 
+              tickLine={false} 
+              axisLine={false} 
+              tick={{ fill: "#94a3b8", fontSize: 10 }} 
+              dx={-6}
+            />
+            <Tooltip 
+              contentStyle={{ 
+                background: "rgba(255, 255, 255, 0.95)", 
+                border: "1px solid #e2e8f0", 
+                borderRadius: 12,
+                boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.05)"
+              }} 
+            />
+            <Area 
+              type="monotone" 
+              dataKey={dataKey} 
+              stroke={colors[0] || "#6366f1"} 
+              strokeWidth={3} 
+              fill="url(#chartAreaGradient)" 
+            />
           </AreaChart>
         )}
       </ResponsiveContainer>

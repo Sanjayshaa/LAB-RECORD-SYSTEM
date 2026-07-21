@@ -107,60 +107,29 @@ export default function AdminSubmissions() {
     setLoading(true);
     setError("");
     try {
-      let profilesQuery = supabase
-        .from("profiles")
-        .select("id, name, register_no, role, department")
-        .eq("role", "student");
+      let query = supabase.from("full_student_data").select("*");
       if (department) {
-        profilesQuery = profilesQuery.ilike("department", department);
+        query = query.ilike("department", department);
       }
-      const { data: profiles, error: profileError } = await profilesQuery;
-      if (profileError) throw profileError;
-
-      const cleanProfiles = (profiles || []).filter((row) => {
-        const name = String(row.name || "").trim();
-        if (isFacultyLikeName(name)) return false;
-        return isValidRegisterNo(row.register_no);
-      });
-      const studentIds = cleanProfiles.map((row) => String(row.id || "").trim()).filter(Boolean);
-      if (studentIds.length === 0) {
-        setRows([]);
-        setLoading(false);
-        return;
-      }
-
-      const profileById = new Map(cleanProfiles.map((row) => [String(row.id), row]));
-      const { data, error: fetchError } = await supabase
-        .from("full_student_data")
-        .select("*")
-        .in("student_id", studentIds);
+      const { data, error: fetchError } = await query;
       if (fetchError) throw fetchError;
 
       const mapped = (data || [])
         .filter((row) => {
-          const sid = String(row.student_id || "").trim();
-          if (!sid || !profileById.has(sid)) return false;
-          const profile = profileById.get(sid);
-          const name = String(row.full_name || row.name || row.student_name || profile?.name || "").trim();
+          const name = String(row.full_name || row.name || row.student_name || "").trim();
           if (isFacultyLikeName(name)) return false;
-          if (!isValidRegisterNo(row.register_no || profile?.register_no)) return false;
-          if (department) {
-            const rowDept = formatDepartmentNameUpper(row.department || profile?.department || "", "");
-            if (!rowDept || normalizeDept(rowDept) !== normalizeDept(department)) return false;
-          }
+          if (!isValidRegisterNo(row.register_no || row.register_number)) return false;
           return true;
         })
         .map((row, index) => {
-          const sid = String(row.student_id || "").trim();
-          const profile = profileById.get(sid);
           return {
             id: String(row.id || `${row.student_id || "s"}-${index}`),
-            student_name: String(row.full_name || row.name || row.student_name || profile?.name || "Student"),
+            student_name: String(row.full_name || row.name || row.student_name || "Student"),
             experiment: String(row.experiment_title || row.experiment_name || row.title || "Experiment"),
             status: String(row.status || "pending"),
             marks: toNumber(row.final_marks ?? row.faculty_marks ?? row.ai_marks ?? row.marks ?? 0),
             submitted_date: String(row.submitted_date || row.submission_date || row.updated_at || ""),
-            department: formatDepartmentName(row.department || profile?.department, "Unassigned"),
+            department: formatDepartmentName(row.department, "Unassigned"),
           };
         });
       setRows(mapped);

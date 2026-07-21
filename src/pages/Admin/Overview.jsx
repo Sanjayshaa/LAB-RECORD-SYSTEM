@@ -191,55 +191,35 @@ export default function Overview() {
         </div>
       </div>
 
-      {/* Chart + Activity */}
+      {/* Chart + Activity Feed */}
       <div className="col-span-12 grid gap-4 xl:grid-cols-3">
-        <div className="xl:col-span-2">
+        <div className="xl:col-span-2 flex flex-col gap-4">
           <ChartCard
             title="Submission Activity"
             type="area"
             data={trend}
+            colors={["#6366f1"]}
             dataKey="submissions"
             emptyTitle="No submissions yet"
             emptyDescription="Submission trend will appear after students start submitting labs."
             loading={loading}
           />
-        </div>
-        <FadeSwitch
-          loading={loading}
-          skeleton={
-            <ShellCard title="Activity Feed">
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, idx) => (
-                  <div key={`activity-skeleton-${idx}`} className="faculty-shimmer h-12 animate-pulse rounded-xl border border-slate-200 bg-white" />
-                ))}
-              </div>
-            </ShellCard>
-          }
-        >
-          <ActivityFeed events={activity} />
-        </FadeSwitch>
-      </div>
-
-      {/* Insights */}
-      <div className="col-span-12 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="col-span-12 md:col-span-4">
           <FadeSwitch
             loading={loading}
             skeleton={
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 {Array.from({ length: 4 }).map((_, idx) => (
                   <ShellCard key={`insight-skeleton-${idx}`}>
                     <div className="space-y-3">
                       <div className="h-4 w-2/5 animate-pulse rounded bg-slate-200" />
                       <div className="h-5 w-4/5 animate-pulse rounded bg-slate-200" />
-                      <div className="h-4 w-3/5 animate-pulse rounded bg-slate-200" />
                     </div>
                   </ShellCard>
                 ))}
               </div>
             }
           >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2">
               {insights.map((item) => (
                 <InsightCard
                   key={item.title}
@@ -250,6 +230,22 @@ export default function Overview() {
                 />
               ))}
             </div>
+          </FadeSwitch>
+        </div>
+        <div className="xl:col-span-1">
+          <FadeSwitch
+            loading={loading}
+            skeleton={
+              <ShellCard title="Activity Feed">
+                <div className="space-y-3">
+                  {Array.from({ length: 4 }).map((_, idx) => (
+                    <div key={`activity-skeleton-${idx}`} className="faculty-shimmer h-12 animate-pulse rounded-xl border border-slate-200 bg-white" />
+                  ))}
+                </div>
+              </ShellCard>
+            }
+          >
+            <ActivityFeed events={activity} />
           </FadeSwitch>
         </div>
       </div>

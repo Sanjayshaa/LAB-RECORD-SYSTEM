@@ -267,12 +267,49 @@ async function syncStudentProgressFromSubmissions(userId) {
   }
 }
 
+function normalizeDepartment(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  const compact = normalized.replace(/\s+/g, "");
+  const aliases = {
+    it: "information technology",
+    informationtechnology: "information technology",
+    aids: "artificial intelligence data science",
+    artificialintelligenceanddatascience: "artificial intelligence data science",
+    artificialintelligencedatascience: "artificial intelligence data science",
+    cse: "computer science and engineering",
+    computerscienceandengineering: "computer science and engineering",
+    computerscienceengineering: "computer science and engineering",
+    csbs: "computer science and business systems",
+    computerscienceandbusinesssystems: "computer science and business systems",
+    computerscienceandbusinesssystem: "computer science and business systems",
+  };
+  return aliases[compact] || normalized;
+}
+
 function departmentMatches(rowDept, filterDept) {
-  const b = String(filterDept || "").trim().toLowerCase();
+  const b = normalizeDepartment(filterDept);
   if (!b) return true;
-  const a = String(rowDept || "").trim().toLowerCase();
+  const a = normalizeDepartment(rowDept);
   if (!a) return false;
-  return a === b || a.includes(b) || b.includes(a);
+  if (a === b) return true;
+  return a.includes(b) || b.includes(a);
+}
+
+function isStudentRole(roleStr) {
+  const r = String(roleStr || "").trim().toLowerCase();
+  return !r || r === "student";
+}
+
+function isFacultyRole(roleStr) {
+  const r = String(roleStr || "").trim().toLowerCase();
+  return r === "faculty";
 }
 
 function emptyRoleAgg() {
@@ -302,6 +339,36 @@ function aggregateProfileRows(rows) {
   };
 }
 
+/** Helper to auto-reconcile XP/labs for students with submissions if their profiles.xp_points is 0 */
+async function autoReconcileSubmissionsMap(supabase, studentIds) {
+  if (!studentIds || !studentIds.length) return new Map();
+  try {
+    const { data: subs } = await supabase
+      .from("submissions")
+      .select("student_id, exp_id, experiment_id, status")
+      .in("student_id", studentIds);
+
+    const map = new Map();
+    (subs || []).forEach((row) => {
+      const sid = String(row.student_id || "");
+      if (!sid) return;
+      const st = String(row.status || "").toLowerCase();
+      if (st === "submitted" || st === "evaluated" || st === "approved") {
+        if (!map.has(sid)) map.set(sid, new Set());
+        const expId = String(row.exp_id || row.experiment_id || idRow(row));
+        if (expId) map.get(sid).add(expId);
+      }
+    });
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+function idRow(r) {
+  return r.id || "";
+}
+
 /** Aggregates XP/labs for admin dashboards (service role; not limited to top-N). */
 async function getDepartmentGamificationStats(department) {
   const supabase = getServiceClient();
@@ -310,10 +377,10 @@ async function getDepartmentGamificationStats(department) {
   try {
     let { data, error } = await supabase
       .from(tableName)
-      .select("xp_points, level, labs_completed, role, department");
+      .select("id, xp_points, level, labs_completed, role, department");
 
     if (error && String(error.message || "").toLowerCase().includes("column")) {
-      ({ data, error } = await supabase.from(tableName).select("xp_points, level, role, department"));
+      ({ data, error } = await supabase.from(tableName).select("id, xp_points, level, role, department"));
     }
 
     if (error) {
@@ -323,12 +390,29 @@ async function getDepartmentGamificationStats(department) {
 
     const rows = data || [];
     const inDept = (row) => !department || departmentMatches(row.department, department);
-    const studentRows = rows.filter(
-      (row) => String(row.role || "").toLowerCase() === "student" && inDept(row)
-    );
-    const facultyRows = rows.filter(
-      (row) => String(row.role || "").toLowerCase() === "faculty" && inDept(row)
-    );
+    let studentRows = rows.filter((row) => isStudentRole(row.role) && inDept(row));
+    const facultyRows = rows.filter((row) => isFacultyRole(row.role) && inDept(row));
+
+    // Auto-reconcile XP for students whose profile.xp_points is 0
+    const zeroXpIds = studentRows.filter((r) => !r.xp_points).map((r) => String(r.id)).filter(Boolean);
+    if (zeroXpIds.length > 0) {
+      const subMap = await autoReconcileSubmissionsMap(supabase, zeroXpIds);
+      studentRows = studentRows.map((row) => {
+        const sid = String(row.id || "");
+        const completedSet = subMap.get(sid);
+        if (completedSet && completedSet.size > 0) {
+          const labs = Math.max(row.labs_completed || 0, completedSet.size);
+          const xp = Math.max(row.xp_points || 0, labs * LAB_COMPLETION_XP_REWARD);
+          return {
+            ...row,
+            labs_completed: labs,
+            xp_points: xp,
+            level: computeLevel(xp),
+          };
+        }
+        return row;
+      });
+    }
 
     return {
       students: aggregateProfileRows(studentRows),
@@ -352,16 +436,9 @@ async function getLeaderboard(department, options = {}) {
 
     let query = supabase.from(tableName).select(selectFull).order("xp_points", { ascending: false }).limit(2000);
 
-    if (roleFilter) {
-      query = query.eq("role", roleFilter);
-    }
-
     let { data, error } = await query;
     if (error && String(error.message || "").toLowerCase().includes("column")) {
       query = supabase.from(tableName).select(selectBasic).order("xp_points", { ascending: false }).limit(2000);
-      if (roleFilter) {
-        query = query.eq("role", roleFilter);
-      }
       ({ data, error } = await query);
     }
     if (error) {
@@ -370,9 +447,43 @@ async function getLeaderboard(department, options = {}) {
     }
 
     let rows = data || [];
+
+    if (roleFilter === "student") {
+      rows = rows.filter((row) => isStudentRole(row.role));
+    } else if (roleFilter === "faculty") {
+      rows = rows.filter((row) => isFacultyRole(row.role));
+    } else if (roleFilter) {
+      rows = rows.filter((row) => String(row.role || "").toLowerCase() === roleFilter.toLowerCase());
+    }
+
     if (department) {
       rows = rows.filter((row) => departmentMatches(row.department, department));
     }
+
+    // Auto-reconcile XP for students whose profile.xp_points is 0
+    if (roleFilter === "student" || !roleFilter) {
+      const zeroXpIds = rows.filter((r) => !r.xp_points).map((r) => String(r.id)).filter(Boolean);
+      if (zeroXpIds.length > 0) {
+        const subMap = await autoReconcileSubmissionsMap(supabase, zeroXpIds);
+        rows = rows.map((row) => {
+          const sid = String(row.id || "");
+          const completedSet = subMap.get(sid);
+          if (completedSet && completedSet.size > 0) {
+            const labs = Math.max(row.labs_completed || 0, completedSet.size);
+            const xp = Math.max(row.xp_points || 0, labs * LAB_COMPLETION_XP_REWARD);
+            return {
+              ...row,
+              labs_completed: labs,
+              xp_points: xp,
+              level: computeLevel(xp),
+            };
+          }
+          return row;
+        });
+      }
+    }
+
+    rows.sort((a, b) => (b.xp_points || 0) - (a.xp_points || 0));
 
     return rows.slice(0, limit).map((row, index) => ({
       rank: index + 1,
@@ -570,32 +681,62 @@ async function rewardSubmission(userId, marks, options = {}) {
 }
 
 async function createStudentTask(payload) {
-  const studentId = String(payload?.studentId || "").trim();
+  const inputStudent = String(payload?.studentId || "").trim();
   const assignedBy = String(payload?.assignedBy || "").trim();
   const title = String(payload?.title || "").trim();
   const description = String(payload?.description || "").trim();
   const xpReward = Math.min(500, Math.max(1, normalizeNonNegativeInteger(payload?.xpReward, 50)));
   const subjectId = payload?.subjectId ? String(payload.subjectId).trim() : null;
 
-  if (!studentId || !title) {
-    throw new Error("studentId and title are required");
+  if (!inputStudent || !title) {
+    throw new Error("Student (UUID, Register No, or Email) and Quest title are required");
   }
 
   const supabase = getServiceClient();
   const tableName = await resolveUserTable(supabase);
 
-  const { data: profile, error: profileError } = await supabase
-    .from(tableName)
-    .select("id, role")
-    .eq("id", studentId)
-    .maybeSingle();
+  // Flexible lookup: UUID, register_no, or email
+  let profile = null;
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inputStudent);
 
-  if (profileError || !profile?.id || String(profile.role || "").toLowerCase() !== "student") {
-    throw new Error("Invalid student account");
+  if (isUuid) {
+    const { data } = await supabase
+      .from(tableName)
+      .select("id, role, name")
+      .eq("id", inputStudent)
+      .maybeSingle();
+    profile = data;
+  }
+
+  if (!profile) {
+    const { data } = await supabase
+      .from(tableName)
+      .select("id, role, name")
+      .eq("register_no", inputStudent)
+      .maybeSingle();
+    profile = data;
+  }
+
+  if (!profile && inputStudent.includes("@")) {
+    const { data } = await supabase
+      .from(tableName)
+      .select("id, role, name")
+      .eq("email", inputStudent)
+      .maybeSingle();
+    profile = data;
+  }
+
+  if (!profile?.id) {
+    throw new Error(`Student not found for "${inputStudent}". Ensure student exists or select from dropdown.`);
+  }
+
+  const targetRole = String(profile.role || "").toLowerCase();
+  if (targetRole && targetRole !== "student") {
+    throw new Error(`User "${profile.name || inputStudent}" is a ${profile.role}, not a student.`);
   }
 
   const insertRow = {
-    student_id: studentId,
+    student_id: profile.id,
     assigned_by: assignedBy || null,
     title,
     description: description || "",
@@ -608,6 +749,12 @@ async function createStudentTask(payload) {
 
   if (error) {
     console.error("createStudentTask insert error:", error.message);
+    const msg = String(error.message || "").toLowerCase();
+    if (msg.includes("relation") || msg.includes("does not exist") || msg.includes("404")) {
+      throw new Error(
+        'Quest table missing in database. Please run "docs/gamification-tasks-schema.sql" in Supabase SQL Editor once.'
+      );
+    }
     throw new Error(error.message);
   }
 

@@ -19,6 +19,7 @@ import Reports from "./FacultyReportsReal";
 import Experiments from "./Experiments";
 import AddExperiment from "./AddExperiment";
 import FacultyNotifications from "./FacultyNotifications";
+import FacultyLeaderboard from "./FacultyLeaderboard";
 
 function RedirectToSubmission() {
   const { id } = useParams();
@@ -92,6 +93,7 @@ export default function Faculty() {
           <Route path="exam-monitor/:examId" element={<FacultyExamMonitor />} />
           <Route path="exam-activity/:examId" element={<FacultyExamActivity />} />
           <Route path="settings" element={<FacultySettings />} />
+          <Route path="leaderboard" element={<FacultyLeaderboard />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/faculty" replace />} />

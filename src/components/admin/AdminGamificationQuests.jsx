@@ -1,22 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { assignQuestTask, fetchAdminAllTasks } from "@/services/gamificationTasksClient";
-import { Shield, Send, ListChecks } from "lucide-react";
+import { getStudentsPageData } from "@/services/adminDataService";
+import { Shield, Send, ListChecks, CheckCircle2, AlertCircle } from "lucide-react";
 import ShellCard from "@/components/admin/ShellCard";
 import EmptyState from "@/components/admin/EmptyState";
 
 export default function AdminGamificationQuests() {
   const [adminDept, setAdminDept] = useState("");
   const [tasks, setTasks] = useState([]);
+  const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [studentId, setStudentId] = useState("");
+  const [customStudentInput, setCustomStudentInput] = useState("");
+  const [useCustomInput, setUseCustomInput] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [xpReward, setXpReward] = useState(50);
   const [submitting, setSubmitting] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState({ type: "", text: "" });
 
-  const loadTasks = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const {
@@ -24,7 +28,11 @@ export default function AdminGamificationQuests() {
       } = await supabase.auth.getSession();
       let dept = "";
       if (session?.user?.id) {
-        const { data: prof } = await supabase.from("profiles").select("department, role").eq("id", session.user.id).maybeSingle();
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("department, role")
+          .eq("id", session.user.id)
+          .maybeSingle();
         if (String(prof?.role || "") !== "admin") {
           setTasks([]);
           return;
@@ -32,41 +40,51 @@ export default function AdminGamificationQuests() {
         dept = String(prof?.department || "").trim();
         setAdminDept(dept);
       }
-      const rows = await fetchAdminAllTasks(dept || undefined);
+      const [rows, studList] = await Promise.all([
+        fetchAdminAllTasks(dept || undefined),
+        getStudentsPageData(dept || undefined).catch(() => []),
+      ]);
       setTasks(Array.isArray(rows) ? rows : []);
+      setStudents(Array.isArray(studList) ? studList : []);
+      if (studList && studList.length > 0) {
+        setStudentId(studList[0].id);
+      }
     } catch {
       setTasks([]);
+      setStudents([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadTasks();
-  }, [loadTasks]);
+    void loadData();
+  }, [loadData]);
 
   const handleAssign = async (e) => {
     e.preventDefault();
-    setMsg("");
-    if (!studentId.trim() || !title.trim()) {
-      setMsg("Enter student UUID and quest title.");
+    setMsg({ type: "", text: "" });
+    const targetStudent = useCustomInput ? customStudentInput.trim() : studentId.trim();
+
+    if (!targetStudent || !title.trim()) {
+      setMsg({ type: "error", text: "Please select a student and enter a quest title." });
       return;
     }
     setSubmitting(true);
     try {
       await assignQuestTask({
-        studentId: studentId.trim(),
+        studentId: targetStudent,
         title: title.trim(),
         description: description.trim(),
         xpReward: Math.min(500, Math.max(1, Number(xpReward) || 50)),
       });
-      setMsg("Quest assigned.");
+      setMsg({ type: "success", text: "Quest successfully assigned!" });
       setTitle("");
       setDescription("");
       setXpReward(50);
-      await loadTasks();
+      await loadData();
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : "Failed");
+      setMsg({ type: "error", text: err instanceof Error ? err.message : "Failed to assign quest" });
     } finally {
       setSubmitting(false);
     }
@@ -77,7 +95,7 @@ export default function AdminGamificationQuests() {
       <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
         <Shield className="h-4 w-4 text-slate-500" />
         <span>
-          Run <code className="rounded bg-white px-1">docs/gamification-tasks-schema.sql</code> in Supabase once so quest
+          Run <code className="rounded bg-white px-1 font-mono">docs/gamification-tasks-schema.sql</code> in Supabase once so quest
           tables exist.
         </span>
       </div>
@@ -85,42 +103,79 @@ export default function AdminGamificationQuests() {
       <ShellCard title="Assign quest (admin)" glow="violet">
         <form onSubmit={handleAssign} className="grid gap-3 md:grid-cols-2">
           <div className="md:col-span-2">
-            <label className="text-xs font-semibold text-slate-600">Student profile id (UUID)</label>
-            <input
-              value={studentId}
-              onChange={(e) => setStudentId(e.target.value)}
-              placeholder="Paste student UUID from Student Management"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-600">Select Student</label>
+              <button
+                type="button"
+                onClick={() => setUseCustomInput(!useCustomInput)}
+                className="text-xs text-violet-600 hover:underline"
+              >
+                {useCustomInput ? "Choose from list" : "Enter Register No / UUID / Email"}
+              </button>
+            </div>
+
+            {useCustomInput ? (
+              <input
+                value={customStudentInput}
+                onChange={(e) => setCustomStudentInput(e.target.value)}
+                placeholder="Enter Student Register No, UUID, or Email..."
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none"
+              />
+            ) : students.length > 0 ? (
+              <select
+                value={studentId}
+                onChange={(e) => setStudentId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none"
+              >
+                {students.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.registerNo || s.register_no || "No Reg"}) — {s.department || "Dept"}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={studentId}
+                onChange={(e) => setStudentId(e.target.value)}
+                placeholder="Paste student UUID or Register No from Student Management..."
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none"
+              />
+            )}
           </div>
+
           <div className="md:col-span-2">
             <label className="text-xs font-semibold text-slate-600">Quest title</label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              placeholder="e.g. Complete Lab 3 bonus challenge"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none"
             />
           </div>
+
           <div className="md:col-span-2">
             <label className="text-xs font-semibold text-slate-600">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              placeholder="Provide instructions or additional details for the quest..."
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none"
             />
           </div>
+
           <div>
-            <label className="text-xs font-semibold text-slate-600">XP (1–500)</label>
+            <label className="text-xs font-semibold text-slate-600">XP Reward (1–500)</label>
             <input
               type="number"
               min={1}
               max={500}
               value={xpReward}
               onChange={(e) => setXpReward(Number(e.target.value))}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none"
             />
           </div>
+
           <div className="flex items-end">
             <button
               type="submit"
@@ -128,10 +183,26 @@ export default function AdminGamificationQuests() {
               className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-60"
             >
               <Send className="h-4 w-4" />
-              Assign
+              {submitting ? "Assigning..." : "Assign Quest"}
             </button>
           </div>
-          {msg ? <p className="md:col-span-2 text-xs text-emerald-800">{msg}</p> : null}
+
+          {msg.text ? (
+            <div
+              className={`md:col-span-2 flex items-center gap-2 rounded-lg p-3 text-xs ${
+                msg.type === "success"
+                  ? "border border-emerald-200 bg-emerald-50 text-emerald-900"
+                  : "border border-rose-200 bg-rose-50 text-rose-900"
+              }`}
+            >
+              {msg.type === "success" ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+              ) : (
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
+              )}
+              <span>{msg.text}</span>
+            </div>
+          ) : null}
         </form>
       </ShellCard>
 

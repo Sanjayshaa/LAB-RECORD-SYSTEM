@@ -19,8 +19,10 @@ import {
   ArrowLeftRight,
   Activity,
   FlaskConical,
+  Trophy,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import BackButton from "@/components/BackButton";
 import { clearAllUserScope } from "@/lib/clientSession";
 import { computeExamPhase } from "@/lib/examWindow";
 import { getFacultyInboxNotifications, type StudentNotification } from "@/services/studentNotificationsService";
@@ -54,6 +56,7 @@ const workspaceNavItems = [
   { icon: FileText,        label: "Submissions", path: "/faculty/submissions" },
   { icon: FlaskConical,    label: "Experiments", path: "/faculty/experiments" },
   { icon: BarChart3,       label: "Analytics",   path: "/faculty/reports" },
+  { icon: Trophy,          label: "Leaderboard", path: "/faculty/leaderboard" },
 ];
 
 const systemNavItems = [
@@ -699,11 +702,14 @@ export default function FacultyLayout() {
       {/* PAGE CONTENT */}
       <main className="flex-1 overflow-y-auto pt-16 md:pt-0">
         <div className="hidden border-b border-slate-200/80 bg-white/70 px-6 py-3 backdrop-blur-xl md:flex md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Faculty Workspace</p>
-            <p className="text-sm font-semibold text-slate-800">
-              {selectedSubjectName ? selectedSubjectName : "Select subject to continue"}
-            </p>
+          <div className="flex items-center gap-3">
+            <BackButton />
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Faculty Workspace</p>
+              <p className="text-sm font-semibold text-slate-800">
+                {selectedSubjectName ? selectedSubjectName : "Select subject to continue"}
+              </p>
+            </div>
           </div>
           <div className="relative">
             <button

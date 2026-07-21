@@ -23,12 +23,19 @@ export default function DepartmentDashboard() {
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    getDepartmentDashboardData(decodeURIComponent(department || "")).then((result) => {
-      if (alive) {
-        setData(result);
-        setLoading(false);
-      }
-    });
+    getDepartmentDashboardData(decodeURIComponent(department || ""))
+      .then((result) => {
+        if (alive) {
+          setData(result);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error("DepartmentDashboard error:", err);
+        if (alive) {
+          setLoading(false);
+        }
+      });
     return () => {
       alive = false;
     };

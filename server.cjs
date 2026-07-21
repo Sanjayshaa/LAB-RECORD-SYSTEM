@@ -656,7 +656,7 @@ if output_lines:
 
     const dockerCmd = `
 docker run --rm \
--v ${jobDir}:/code \
+-v "${jobDir}":/code \
 ${image} \
 ${cmd}
 `;

@@ -357,136 +357,184 @@ export async function getAdminOverviewData() {
 }
 
 export async function getDepartmentDashboardData(departmentName) {
-  const department = normalizeDepartment(departmentName);
-  const { data: fullRows, error: fullError } = await supabase
-    .from("full_student_data")
-    .select("*")
-    .ilike("department", department);
-  const safeFullRows = (fullError ? [] : (fullRows || [])).filter(isRealStudentRow);
+  try {
+    const { data: fullRows, error: fullError } = await supabase
+      .from("full_student_data")
+      .select("*");
+    const safeFullRows = (fullError ? [] : (fullRows || []))
+      .filter(isRealStudentRow)
+      .filter((row) => deptMatchRelaxed(valueFromRow(row, ["department", "dept"], ""), departmentName));
 
-  const { data: subjectRows, error: subjectError } = await supabase
-    .from("subjects")
-    .select("id, name, code, year, semester, department")
-    .ilike("department", department);
-  const safeSubjectRows = subjectError ? [] : (subjectRows || []);
+    const { data: subjectRows, error: subjectError } = await supabase
+      .from("subjects")
+      .select("id, name, code, year, semester, department");
+    const safeSubjectRows = (subjectError ? [] : (subjectRows || []))
+      .filter((row) => deptMatchRelaxed(row.department, departmentName));
 
-  const { data: facultyRows, error: facultyError } = await supabase
-    .from("profiles")
-    .select("id, name, department, role")
-    .eq("role", "faculty")
-    .ilike("department", department);
-  const safeFacultyRows = facultyError ? [] : (facultyRows || []);
+    const { data: facultyRows, error: facultyError } = await supabase
+      .from("profiles")
+      .select("id, name, department, role, email")
+      .or("role.eq.faculty,role.eq.teacher,role.eq.staff");
 
-  const studentMap = new Map();
-  safeFullRows.forEach((row) => {
-    const studentId = String(valueFromRow(row, ["student_id", "id"], ""));
-    if (!studentId) return;
-    const prev = studentMap.get(studentId) || {
-      id: studentId,
-      name: String(valueFromRow(row, ["full_name", "name", "student_name"], "Student")),
-      register_no: String(valueFromRow(row, ["register_no"], "-")),
-      year: String(valueFromRow(row, ["year"], "-")),
-      semester: String(valueFromRow(row, ["semester"], "-")),
-      avgGrade: 0,
-      completion: 0,
-      _totalMarks: 0,
-      _count: 0,
-      _completed: 0,
-    };
-    prev._count += 1;
-    const mark = toNumber(valueFromRow(row, ["final_marks", "faculty_marks", "ai_marks", "marks"], 0));
-    prev._totalMarks += mark;
-    const status = String(valueFromRow(row, ["status"], "")).toLowerCase();
-    if (status === "evaluated" || status === "submitted" || status === "approved") prev._completed += 1;
-    studentMap.set(studentId, prev);
-  });
-  const students = Array.from(studentMap.values()).map((row) => ({
-    ...row,
-    avgGrade: row._count ? Number((row._totalMarks / row._count).toFixed(1)) : 0,
-    completion: row._count ? Math.round((row._completed / row._count) * 100) : 0,
-  }));
+    let safeFacultyRows = facultyError ? [] : (facultyRows || []);
+    let matchedFaculty = safeFacultyRows.filter((row) =>
+      deptMatchRelaxed(row.department, departmentName)
+    );
+    if (matchedFaculty.length === 0) {
+      matchedFaculty = safeFacultyRows;
+    }
 
-  const trendMap = new Map();
-  safeFullRows.forEach((row) => {
-    const key = toDateLabel(valueFromRow(row, ["submitted_date", "submission_date", "updated_at", "created_at"], ""));
-    if (!key) return;
-    trendMap.set(key, (trendMap.get(key) || 0) + 1);
-  });
-  const trend = Array.from(trendMap.entries()).map(([label, value]) => ({ label, value })).slice(-10);
+    const { data: studentProfiles } = await supabase
+      .from("profiles")
+      .select("id, name, register_no, department, year, semester, role")
+      .eq("role", "student");
+    const safeStudentProfiles = (studentProfiles || [])
+      .filter((row) => !isFacultyLikeName(row.name))
+      .filter((row) => deptMatchRelaxed(row.department, departmentName));
 
-  const marks = safeFullRows
-    .map((row) => toNumber(valueFromRow(row, ["final_marks", "faculty_marks", "ai_marks", "marks"], 0)))
-    .filter((v) => Number.isFinite(v));
+    const studentMap = new Map();
 
-  const gradeDistribution = [
-    { bucket: "0-49", count: marks.filter((v) => v < 50).length },
-    { bucket: "50-74", count: marks.filter((v) => v >= 50 && v < 75).length },
-    { bucket: "75-89", count: marks.filter((v) => v >= 75 && v < 90).length },
-    { bucket: "90-100", count: marks.filter((v) => v >= 90).length },
-  ];
-
-  const diffAgg = new Map();
-  safeFullRows.forEach((row) => {
-    const experimentName = String(valueFromRow(row, ["experiment_title", "experiment_name", "title"], "Experiment"));
-    const mark = toNumber(valueFromRow(row, ["final_marks", "faculty_marks", "ai_marks", "marks"], 0));
-    const prev = diffAgg.get(experimentName) || { experiment: experimentName, total: 0, count: 0 };
-    prev.total += mark;
-    prev.count += 1;
-    diffAgg.set(experimentName, prev);
-  });
-  const difficulty = Array.from(diffAgg.values()).map((row) => ({
-    experiment: row.experiment,
-    avgGrade: row.count ? Number((row.total / row.count).toFixed(1)) : 0,
-    submitTime: 0,
-  }));
-
-  const experimentList = Array.from(
-    new Set(
-      safeFullRows
-        .map((row) => String(valueFromRow(row, ["experiment_title", "experiment_name", "title"], "")).trim())
-        .filter(Boolean)
-    )
-  ).map((label) => ({ label }));
-
-  const matrixRows = students.map((student) => {
-    const sourceRows = safeFullRows.filter((row) => String(valueFromRow(row, ["student_id", "id"], "")) === String(student.id));
-    const byExperiment = new Map();
-    sourceRows.forEach((row) => {
-      const exp = String(valueFromRow(row, ["experiment_title", "experiment_name", "title"], "")).trim();
-      if (!exp) return;
-      byExperiment.set(exp, {
-        experiment: exp,
-        score: toNumber(valueFromRow(row, ["final_marks", "faculty_marks", "ai_marks", "marks"], 0)),
-        status: String(valueFromRow(row, ["status"], "")).toLowerCase() || "pending",
+    safeStudentProfiles.forEach((p) => {
+      const studentId = String(p.id || "").trim();
+      if (!studentId) return;
+      studentMap.set(studentId, {
+        id: studentId,
+        name: String(p.name || "Student"),
+        register_no: String(p.register_no || "-"),
+        year: String(p.year || "-"),
+        semester: String(p.semester || "-"),
+        avgGrade: 0,
+        completion: 0,
+        _totalMarks: 0,
+        _count: 0,
+        _completed: 0,
       });
     });
-    const cells = experimentList.map((exp) => byExperiment.get(exp.label) || { experiment: exp.label, score: 0, status: "pending" });
-    return { studentName: student.name, cells };
-  });
 
-  return {
-    department,
-    stats: {
-      students: students.length,
-      faculty: safeFacultyRows.length,
-      subjects: safeSubjectRows.length,
-    },
-    students,
-    faculty: safeFacultyRows.map((row) => ({ id: row.id, name: row.name || "Faculty", assigned: 0 })),
-    subjects: safeSubjectRows.map((row) => ({
-      id: row.id,
-      name: row.name || "Untitled Subject",
-      code: row.code || "",
-      year: row.year || "",
-      semester: row.semester || "",
-      experiments: experimentList.length,
-    })),
-    experiments: experimentList,
-    matrix: matrixRows,
-    trend,
-    gradeDistribution,
-    difficulty,
-  };
+    safeFullRows.forEach((row) => {
+      const studentId = String(valueFromRow(row, ["student_id", "id"], ""));
+      if (!studentId) return;
+      const prev = studentMap.get(studentId) || {
+        id: studentId,
+        name: String(valueFromRow(row, ["full_name", "name", "student_name"], "Student")),
+        register_no: String(valueFromRow(row, ["register_no"], "-")),
+        year: String(valueFromRow(row, ["year"], "-")),
+        semester: String(valueFromRow(row, ["semester"], "-")),
+        avgGrade: 0,
+        completion: 0,
+        _totalMarks: 0,
+        _count: 0,
+        _completed: 0,
+      };
+      prev._count += 1;
+      const mark = toNumber(valueFromRow(row, ["final_marks", "faculty_marks", "ai_marks", "marks"], 0));
+      prev._totalMarks += mark;
+      const status = String(valueFromRow(row, ["status"], "")).toLowerCase();
+      if (status === "evaluated" || status === "submitted" || status === "approved") prev._completed += 1;
+      studentMap.set(studentId, prev);
+    });
+    const students = Array.from(studentMap.values()).map((row) => ({
+      ...row,
+      avgGrade: row._count ? Number((row._totalMarks / row._count).toFixed(1)) : 0,
+      completion: row._count ? Math.round((row._completed / row._count) * 100) : 0,
+    }));
+
+    const trendMap = new Map();
+    safeFullRows.forEach((row) => {
+      const key = toDateLabel(valueFromRow(row, ["submitted_date", "submission_date", "updated_at", "created_at"], ""));
+      if (!key) return;
+      trendMap.set(key, (trendMap.get(key) || 0) + 1);
+    });
+    const trend = Array.from(trendMap.entries()).map(([label, value]) => ({ label, value })).slice(-10);
+
+    const marks = safeFullRows
+      .map((row) => toNumber(valueFromRow(row, ["final_marks", "faculty_marks", "ai_marks", "marks"], 0)))
+      .filter((v) => Number.isFinite(v));
+
+    const gradeDistribution = [
+      { bucket: "0-49", count: marks.filter((v) => v < 50).length },
+      { bucket: "50-74", count: marks.filter((v) => v >= 50 && v < 75).length },
+      { bucket: "75-89", count: marks.filter((v) => v >= 75 && v < 90).length },
+      { bucket: "90-100", count: marks.filter((v) => v >= 90).length },
+    ];
+
+    const diffAgg = new Map();
+    safeFullRows.forEach((row) => {
+      const experimentName = String(valueFromRow(row, ["experiment_title", "experiment_name", "title"], "Experiment"));
+      const mark = toNumber(valueFromRow(row, ["final_marks", "faculty_marks", "ai_marks", "marks"], 0));
+      const prev = diffAgg.get(experimentName) || { experiment: experimentName, total: 0, count: 0 };
+      prev.total += mark;
+      prev.count += 1;
+      diffAgg.set(experimentName, prev);
+    });
+    const difficulty = Array.from(diffAgg.values()).map((row) => ({
+      experiment: row.experiment,
+      avgGrade: row.count ? Number((row.total / row.count).toFixed(1)) : 0,
+      submitTime: 0,
+    }));
+
+    const experimentList = Array.from(
+      new Set(
+        safeFullRows
+          .map((row) => String(valueFromRow(row, ["experiment_title", "experiment_name", "title"], "")).trim())
+          .filter(Boolean)
+      )
+    );
+
+    const matrixRows = students.map((student) => {
+      const sourceRows = safeFullRows.filter((row) => String(valueFromRow(row, ["student_id", "id"], "")) === String(student.id));
+      const byExperiment = new Map();
+      sourceRows.forEach((row) => {
+        const exp = String(valueFromRow(row, ["experiment_title", "experiment_name", "title"], "")).trim();
+        if (!exp) return;
+        byExperiment.set(exp, {
+          experiment: exp,
+          score: toNumber(valueFromRow(row, ["final_marks", "faculty_marks", "ai_marks", "marks"], 0)),
+          status: String(valueFromRow(row, ["status"], "")).toLowerCase() || "pending",
+        });
+      });
+      const cells = experimentList.map((exp) => byExperiment.get(exp) || { experiment: exp, score: 0, status: "pending" });
+      return { studentName: student.name, cells };
+    });
+
+    return {
+      department: departmentName,
+      stats: {
+        students: students.length,
+        faculty: matchedFaculty.length,
+        subjects: safeSubjectRows.length,
+      },
+      students,
+      faculty: matchedFaculty.map((row) => ({ id: row.id, name: row.name || "Faculty", assigned: 0 })),
+      subjects: safeSubjectRows.map((row) => ({
+        id: row.id,
+        name: row.name || "Untitled Subject",
+        code: row.code || "",
+        year: row.year || "",
+        semester: row.semester || "",
+        experiments: 0,
+      })),
+      experiments: experimentList,
+      matrix: matrixRows,
+      trend,
+      gradeDistribution,
+      difficulty,
+    };
+  } catch (err) {
+    console.error("getDepartmentDashboardData error:", err);
+    return {
+      department: departmentName,
+      stats: { students: 0, faculty: 0, subjects: 0 },
+      students: [],
+      faculty: [],
+      subjects: [],
+      experiments: [],
+      matrix: [],
+      trend: [],
+      gradeDistribution: [],
+      difficulty: [],
+    };
+  }
 }
 
 export async function getStudentsPageData(department) {

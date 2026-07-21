@@ -19,6 +19,7 @@ import {
   Trophy,
 } from "lucide-react";
 import CommandPalette from "@/components/admin/CommandPalette";
+import BackButton from "@/components/BackButton";
 import { supabase } from "@/lib/supabase";
 import { getAdminInboxNotifications } from "@/services/studentNotificationsService";
 import { formatDepartmentNameUpper } from "@/utils/departmentLabel";
@@ -287,7 +288,8 @@ export default function AdminShell({ title, children }) {
         <div className="flex min-h-screen flex-1 flex-col">
           <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/80 backdrop-blur-xl">
             <div className="mx-auto flex h-14 w-full max-w-[1280px] items-center justify-between gap-3 px-4 md:px-7">
-              <div className="flex items-center gap-2 text-sm text-slate-700">
+              <div className="flex items-center gap-3 text-sm text-slate-700">
+                <BackButton />
                 <span className="text-slate-500">Admin</span>
                 <span className="text-slate-300">/</span>
                 {adminDept && (
