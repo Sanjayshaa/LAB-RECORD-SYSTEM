@@ -689,59 +689,71 @@ async function createStudentTask(payload) {
   const subjectId = payload?.subjectId ? String(payload.subjectId).trim() : null;
 
   if (!inputStudent || !title) {
-    throw new Error("Student (UUID, Register No, or Email) and Quest title are required");
+    throw new Error("Student target and Quest title are required");
   }
+
+  const isGlobal =
+    inputStudent.toUpperCase() === "ALL" ||
+    inputStudent.toUpperCase() === "GLOBAL" ||
+    inputStudent === "*";
 
   const supabase = getServiceClient();
   const tableName = await resolveUserTable(supabase);
 
-  // Flexible lookup: UUID, register_no, or email
-  let profile = null;
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inputStudent);
+  let studentId = null;
 
-  if (isUuid) {
-    const { data } = await supabase
-      .from(tableName)
-      .select("id, role, name")
-      .eq("id", inputStudent)
-      .maybeSingle();
-    profile = data;
-  }
+  if (!isGlobal) {
+    // Flexible lookup: UUID, register_no, or email
+    let profile = null;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inputStudent);
 
-  if (!profile) {
-    const { data } = await supabase
-      .from(tableName)
-      .select("id, role, name")
-      .eq("register_no", inputStudent)
-      .maybeSingle();
-    profile = data;
-  }
+    if (isUuid) {
+      const { data } = await supabase
+        .from(tableName)
+        .select("id, role, name")
+        .eq("id", inputStudent)
+        .maybeSingle();
+      profile = data;
+    }
 
-  if (!profile && inputStudent.includes("@")) {
-    const { data } = await supabase
-      .from(tableName)
-      .select("id, role, name")
-      .eq("email", inputStudent)
-      .maybeSingle();
-    profile = data;
-  }
+    if (!profile) {
+      const { data } = await supabase
+        .from(tableName)
+        .select("id, role, name")
+        .eq("register_no", inputStudent)
+        .maybeSingle();
+      profile = data;
+    }
 
-  if (!profile?.id) {
-    throw new Error(`Student not found for "${inputStudent}". Ensure student exists or select from dropdown.`);
-  }
+    if (!profile && inputStudent.includes("@")) {
+      const { data } = await supabase
+        .from(tableName)
+        .select("id, role, name")
+        .eq("email", inputStudent)
+        .maybeSingle();
+      profile = data;
+    }
 
-  const targetRole = String(profile.role || "").toLowerCase();
-  if (targetRole && targetRole !== "student") {
-    throw new Error(`User "${profile.name || inputStudent}" is a ${profile.role}, not a student.`);
+    if (!profile?.id) {
+      throw new Error(`Student not found for "${inputStudent}". Select a valid student or "All Students (Global Quest)".`);
+    }
+
+    const targetRole = String(profile.role || "").toLowerCase();
+    if (targetRole && targetRole !== "student") {
+      throw new Error(`User "${profile.name || inputStudent}" is a ${profile.role}, not a student.`);
+    }
+
+    studentId = profile.id;
   }
 
   const insertRow = {
-    student_id: profile.id,
+    student_id: studentId,
     assigned_by: assignedBy || null,
     title,
     description: description || "",
     xp_reward: xpReward,
     subject_id: subjectId || null,
+    is_global: isGlobal,
     status: "pending",
   };
 
@@ -779,32 +791,56 @@ async function completeStudentTask(taskId, studentId) {
     return { ok: false, error: "Task not found" };
   }
 
-  if (String(task.student_id) !== sid) {
-    return { ok: false, error: "This task is not assigned to you" };
-  }
+  const isGlobalTask = Boolean(task.is_global) || !task.student_id;
 
-  if (String(task.status || "").toLowerCase() !== "pending") {
-    return { ok: false, error: "Task is not pending" };
+  if (isGlobalTask) {
+    if (await canQueryTable(supabase, "student_quest_completions")) {
+      const { data: existing } = await supabase
+        .from("student_quest_completions")
+        .select("id")
+        .eq("task_id", id)
+        .eq("student_id", sid)
+        .maybeSingle();
+
+      if (existing) {
+        return { ok: false, error: "You have already completed this quest" };
+      }
+
+      const { error: compError } = await supabase
+        .from("student_quest_completions")
+        .insert({ task_id: id, student_id: sid });
+
+      if (compError) {
+        console.error("Global task completion record error:", compError.message);
+      }
+    }
+  } else {
+    if (String(task.student_id) !== sid) {
+      return { ok: false, error: "This task is not assigned to you" };
+    }
+
+    if (String(task.status || "").toLowerCase() !== "pending") {
+      return { ok: false, error: "Task is not pending" };
+    }
+
+    const { error: updateError } = await supabase
+      .from(TASKS_TABLE)
+      .update({
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("student_id", sid);
+
+    if (updateError) {
+      console.error("completeStudentTask update error:", updateError.message);
+      return { ok: false, error: updateError.message };
+    }
   }
 
   const xpReward = normalizeNonNegativeInteger(task.xp_reward, 0);
   const progress = await addXP(sid, xpReward);
-
-  const { error: updateError } = await supabase
-    .from(TASKS_TABLE)
-    .update({
-      status: "completed",
-      completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .eq("student_id", sid);
-
-  if (updateError) {
-    console.error("completeStudentTask update error:", updateError.message);
-    return { ok: false, error: updateError.message };
-  }
-
   const newAchievements = await checkAndGrantAchievements(sid);
 
   return { ok: true, progress, newAchievements };
@@ -817,20 +853,48 @@ async function listTasksForStudent(studentId, options = {}) {
   const supabase = getServiceClient();
   const statusFilter = String(options?.status || "").trim().toLowerCase();
 
-  let query = supabase.from(TASKS_TABLE).select("*").eq("student_id", sid).order("created_at", { ascending: false });
+  let { data: directTasks } = await supabase
+    .from(TASKS_TABLE)
+    .select("*")
+    .eq("student_id", sid)
+    .order("created_at", { ascending: false })
+    .limit(100);
 
-  if (statusFilter === "pending" || statusFilter === "completed" || statusFilter === "cancelled") {
-    query = query.eq("status", statusFilter);
+  let { data: globalTasks } = await supabase
+    .from(TASKS_TABLE)
+    .select("*")
+    .or("is_global.eq.true,student_id.is.null")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  const directList = directTasks || [];
+  const globalList = globalTasks || [];
+
+  const completedGlobalTaskIds = new Set();
+  if (globalList.length > 0 && (await canQueryTable(supabase, "student_quest_completions"))) {
+    const { data: compRows } = await supabase
+      .from("student_quest_completions")
+      .select("task_id")
+      .eq("student_id", sid);
+
+    (compRows || []).forEach((r) => completedGlobalTaskIds.add(String(r.task_id)));
   }
 
-  const { data, error } = await query.limit(100);
+  const mappedGlobal = globalList.map((t) => {
+    const isDone = completedGlobalTaskIds.has(String(t.id));
+    return {
+      ...t,
+      status: isDone ? "completed" : "pending",
+      is_global: true,
+    };
+  });
 
-  if (error) {
-    console.error("listTasksForStudent error:", error.message);
-    return [];
-  }
+  const merged = [...directList, ...mappedGlobal];
 
-  return data || [];
+  if (statusFilter === "pending") return merged.filter((t) => t.status === "pending");
+  if (statusFilter === "completed") return merged.filter((t) => t.status === "completed");
+
+  return merged;
 }
 
 async function listTasksCreatedBy(assignerId, options = {}) {
@@ -863,17 +927,18 @@ async function enrichTasksWithProfileNames(tasks) {
     if (t.assigned_by) ids.add(String(t.assigned_by));
   });
   const idList = [...ids].filter(Boolean);
-  if (!idList.length) return tasks;
 
   const supabase = getServiceClient();
-  const { data: profiles } = await supabase.from("profiles").select("id, name, department, role").in("id", idList);
-
-  const map = new Map((profiles || []).map((p) => [p.id, p]));
+  let map = new Map();
+  if (idList.length > 0) {
+    const { data: profiles } = await supabase.from("profiles").select("id, name, department, role").in("id", idList);
+    map = new Map((profiles || []).map((p) => [p.id, p]));
+  }
 
   return tasks.map((t) => ({
     ...t,
-    student_name: map.get(t.student_id)?.name || null,
-    student_department: map.get(t.student_id)?.department || null,
+    student_name: t.is_global || !t.student_id ? "🌟 All Students (Global Quest)" : map.get(t.student_id)?.name || null,
+    student_department: t.student_id ? map.get(t.student_id)?.department || null : "All Departments",
     assigner_name: t.assigned_by ? map.get(t.assigned_by)?.name || null : null,
   }));
 }

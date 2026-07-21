@@ -1,14 +1,15 @@
--- Individual XP quests assigned to students (faculty/admin).
--- Run in Supabase SQL after gamification-schema.sql.
+-- Individual and Overall Global XP quests assigned to students (faculty/admin).
+-- Run in Supabase SQL Editor.
 
 CREATE TABLE IF NOT EXISTS public.student_gamification_tasks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  student_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
   assigned_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   subject_id uuid REFERENCES public.subjects(id) ON DELETE SET NULL,
   title text NOT NULL,
   description text NOT NULL DEFAULT '',
   xp_reward integer NOT NULL DEFAULT 50,
+  is_global boolean NOT NULL DEFAULT false,
   status text NOT NULL DEFAULT 'pending',
   created_at timestamp with time zone NOT NULL DEFAULT timezone('utc', now()),
   completed_at timestamp with time zone,
@@ -17,10 +18,28 @@ CREATE TABLE IF NOT EXISTS public.student_gamification_tasks (
   CONSTRAINT student_gamification_tasks_xp_check CHECK (xp_reward >= 1 AND xp_reward <= 500)
 );
 
+-- Make student_id nullable for global overall quests (applicable to all students)
+ALTER TABLE public.student_gamification_tasks ALTER COLUMN student_id DROP NOT NULL;
+ALTER TABLE public.student_gamification_tasks ADD COLUMN IF NOT EXISTS is_global boolean NOT NULL DEFAULT false;
+
+-- Per-student completion tracking for global overall quests
+CREATE TABLE IF NOT EXISTS public.student_quest_completions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id uuid NOT NULL REFERENCES public.student_gamification_tasks(id) ON DELETE CASCADE,
+  student_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  completed_at timestamp with time zone NOT NULL DEFAULT timezone('utc', now()),
+  UNIQUE (task_id, student_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_student_gamification_tasks_student_status
   ON public.student_gamification_tasks(student_id, status);
 
 CREATE INDEX IF NOT EXISTS idx_student_gamification_tasks_assigner
   ON public.student_gamification_tasks(assigned_by, created_at DESC);
 
-COMMENT ON TABLE public.student_gamification_tasks IS 'Quest-style tasks; completing pending rows awards XP via API (server updates profiles.xp_points).';
+CREATE INDEX IF NOT EXISTS idx_student_quest_completions_student
+  ON public.student_quest_completions(student_id);
+
+COMMENT ON TABLE public.student_gamification_tasks IS 'Quest-style tasks; individual or global overall quests applicable to all students.';
+COMMENT ON TABLE public.student_quest_completions IS 'Tracks student completion records for overall global quests.';
+

@@ -67,6 +67,37 @@ function toCsv(rows: SubmissionRow[]): string {
   return lines.join("\n");
 }
 
+function normalizeDeptString(value: unknown): string {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  const compact = normalized.replace(/\s+/g, "");
+  const aliases: Record<string, string> = {
+    it: "information technology",
+    informationtechnology: "information technology",
+    aids: "artificial intelligence data science",
+    artificialintelligenceanddatascience: "artificial intelligence data science",
+    cse: "computer science and engineering",
+    computerscienceandengineering: "computer science and engineering",
+    csbs: "computer science and business systems",
+  };
+  return aliases[compact] || normalized;
+}
+
+function deptMatchRelaxed(studentDept: unknown, adminDept: unknown): boolean {
+  const b = normalizeDeptString(adminDept);
+  if (!b) return true;
+  const a = normalizeDeptString(studentDept);
+  if (!a) return false;
+  if (a === b) return true;
+  return a.includes(b) || b.includes(a);
+}
+
 export default function AdminSubmissions() {
   const [searchParams, setSearchParams] = useSearchParams();
   const reportTab = searchParams.get("tab") === "proctor" ? "proctor" : "submissions";
@@ -107,21 +138,41 @@ export default function AdminSubmissions() {
     setLoading(true);
     setError("");
     try {
-      let query = supabase.from("full_student_data").select("*");
-      if (department) {
-        query = query.ilike("department", department);
+      // Fetch from full_student_data view
+      let { data, error: fetchError } = await supabase.from("full_student_data").select("*");
+
+      // Fallback: If view is empty or errors out, fetch directly from submissions table
+      if (fetchError || !data || data.length === 0) {
+        const { data: directSubs } = await supabase
+          .from("submissions")
+          .select("id, student_id, status, marks, faculty_marks, final_marks, ai_marks, updated_at, submitted_date, created_at, profiles(id, name, full_name, register_no, department), experiments(title, experiment_no)");
+
+        if (directSubs && directSubs.length > 0) {
+          data = directSubs.map((s: any) => ({
+            id: s.id,
+            student_id: s.student_id,
+            full_name: s.profiles?.name || s.profiles?.full_name || "Student",
+            register_no: s.profiles?.register_no || "-",
+            department: s.profiles?.department || "Unassigned",
+            experiment_title: s.experiments?.title || `Experiment ${s.experiments?.experiment_no || 1}`,
+            status: s.status || "submitted",
+            final_marks: s.final_marks ?? s.faculty_marks ?? s.marks ?? s.ai_marks ?? 0,
+            submitted_date: s.submitted_date || s.updated_at || s.created_at || "",
+          }));
+        }
       }
-      const { data, error: fetchError } = await query;
-      if (fetchError) throw fetchError;
 
       const mapped = (data || [])
-        .filter((row) => {
+        .filter((row: any) => {
+          if (department && !deptMatchRelaxed(row.department, department)) {
+            return false;
+          }
           const name = String(row.full_name || row.name || row.student_name || "").trim();
           if (isFacultyLikeName(name)) return false;
           if (!isValidRegisterNo(row.register_no || row.register_number)) return false;
           return true;
         })
-        .map((row, index) => {
+        .map((row: any, index: number) => {
           return {
             id: String(row.id || `${row.student_id || "s"}-${index}`),
             student_name: String(row.full_name || row.name || row.student_name || "Student"),
@@ -238,17 +289,14 @@ export default function AdminSubmissions() {
               <select
                 value={department}
                 onChange={(event) => setDepartment(event.target.value)}
-                className="h-10 rounded-lg border border-slate-200 px-3 text-sm"
+                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 focus:outline-none"
               >
-                {allowedDepartments.length === 0 ? (
-                  <option value="">NO DEPARTMENT ASSIGNED</option>
-                ) : (
-                  allowedDepartments.map((dept) => (
-                    <option key={dept} value={normalizeDept(dept)}>
-                      {dept}
-                    </option>
-                  ))
-                )}
+                <option value="">ALL DEPARTMENTS</option>
+                {allowedDepartments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
               </select>
               <button
                 type="button"

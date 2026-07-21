@@ -92,14 +92,6 @@ export default function AdminGamificationQuests() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-        <Shield className="h-4 w-4 text-slate-500" />
-        <span>
-          Run <code className="rounded bg-white px-1 font-mono">docs/gamification-tasks-schema.sql</code> in Supabase once so quest
-          tables exist.
-        </span>
-      </div>
-
       <ShellCard title="Assign quest (admin)" glow="violet">
         <form onSubmit={handleAssign} className="grid gap-3 md:grid-cols-2">
           <div className="md:col-span-2">
@@ -118,28 +110,22 @@ export default function AdminGamificationQuests() {
               <input
                 value={customStudentInput}
                 onChange={(e) => setCustomStudentInput(e.target.value)}
-                placeholder="Enter Student Register No, UUID, or Email..."
+                placeholder="Enter Student Register No, UUID, Email, or 'ALL' for Global Quest..."
                 className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none"
               />
-            ) : students.length > 0 ? (
+            ) : (
               <select
                 value={studentId}
                 onChange={(e) => setStudentId(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 focus:border-violet-400 focus:outline-none"
               >
+                <option value="ALL">🌟 All Students (Global Quest - Applies to Everyone)</option>
                 {students.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name} ({s.registerNo || s.register_no || "No Reg"}) — {s.department || "Dept"}
                   </option>
                 ))}
               </select>
-            ) : (
-              <input
-                value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-                placeholder="Paste student UUID or Register No from Student Management..."
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none"
-              />
             )}
           </div>
 

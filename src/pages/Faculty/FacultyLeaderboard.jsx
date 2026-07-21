@@ -16,6 +16,7 @@ import ShellCard from "@/components/admin/ShellCard";
 import EmptyState from "@/components/admin/EmptyState";
 import FadeSwitch from "@/components/admin/FadeSwitch";
 import AchievementsPanel from "@/components/gamification/AchievementsPanel";
+import FacultyGamificationQuests from "@/components/faculty/FacultyGamificationQuests";
 import { getFacultyStudentsListResultUnified, getFacultySubjectEnrollmentProfiles } from "@/services/facultyDataService";
 import { supabase } from "@/lib/supabase";
 
@@ -292,6 +293,16 @@ export default function FacultyLeaderboard() {
           >
             Gamification (XP)
           </button>
+          <button
+            onClick={() => setLeaderboardTab("quests")}
+            className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
+              leaderboardTab === "quests"
+                ? "border-violet-200 bg-violet-50 text-violet-800"
+                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            Quests (Assign Tasks)
+          </button>
         </div>
       </div>
 
@@ -525,6 +536,10 @@ export default function FacultyLeaderboard() {
             )}
           </ShellCard>
         </div>
+      )}
+
+      {leaderboardTab === "quests" && (
+        <FacultyGamificationQuests />
       )}
 
       {/* Student Achievements Modal */}
