@@ -9,6 +9,7 @@ import SubjectsManagement from "@/pages/Admin/SubjectsManagement.jsx";
 import AdminSettings from "@/pages/Admin/AdminSettings";
 import NotificationsPage from "@/pages/Admin/Notifications.jsx";
 import AdminSubmissions from "@/pages/Admin/AdminSubmissions";
+import AdminInternalMarks from "@/pages/Admin/AdminInternalMarks";
 export default function AdminRoutes() {
   return (
     <Routes>
@@ -28,6 +29,7 @@ export default function AdminRoutes() {
       <Route path="bulk-upload" element={<Navigate to="/admin/students?tab=import" replace />} />
       <Route path="notifications" element={<NotificationsPage />} />
       <Route path="submissions" element={<AdminSubmissions />} />
+      <Route path="internal-marks" element={<AdminInternalMarks />} />
       <Route path="settings" element={<AdminSettings />} />
       <Route path="proctor" element={<Navigate to="/admin/submissions?tab=proctor" replace />} />
       <Route path="gamification" element={<Navigate to="/admin/leaderboard?tab=gamification" replace />} />

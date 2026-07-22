@@ -63,7 +63,6 @@ function formatMessageTime(value: string | null): string {
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/student", color: "indigo" },
-  { icon: GraduationCap, label: "Subjects", path: "/student/subjects", color: "indigo" },
   { icon: FlaskConical, label: "Experiments", path: "/student/experiments", color: "indigo" },
   { icon: FileCheck2, label: "Submissions", path: "/student/submissions", color: "blue" },
   { icon: Award, label: "Marks", path: "/student/marks", color: "amber" },

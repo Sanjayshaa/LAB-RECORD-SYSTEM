@@ -1,15 +1,12 @@
-
-
-
 import type React from "react";
-
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ProfileSkeleton } from "@/components/ui/StudentSkeletons";
-import { clearSelectedSubjectInStorage } from "@/context/SubjectContext";
+import { clearSelectedSubjectInStorage, getSelectedSubjectFromStorage } from "@/context/SubjectContext";
 import { getStatusConfig } from "@/utils/statusConfig";
+import { getStudentExperimentData, type UnifiedExperiment } from "@/utils/unifiedStudentData";
 import {
   User,
   Mail,
@@ -28,6 +25,9 @@ import {
   Award,
   Flame,
   Trophy,
+  Hash,
+  Building2,
+  BookOpen,
 } from "lucide-react";
 import {
   getUserProgress,
@@ -43,25 +43,28 @@ function getInitials(name: string): string {
 }
 
 export default function StudentProfile() {
-  const STUDENT_PROFILE_ERROR =
-    "Unable to load your profile right now. Please try again.";
+  const STUDENT_PROFILE_ERROR = "Unable to load your profile right now. Please try again.";
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState("student");
+  const [registerNo, setRegisterNo] = useState("N/A");
+  const [department, setDepartment] = useState("N/A");
+  const [yearSemester, setYearSemester] = useState("N/A");
+  const [activeSubjectName, setActiveSubjectName] = useState("");
+
   const [error, setError] = useState<string | null>(null);
-  const [experiments, setExperiments] = useState<
-    Array<{ id: string; experiment_no: string; title: string; status: string }>
-  >([]);
-  const [gamificationProgress, setGamificationProgress] =
-    useState<GamificationProgress | null>(null);
+  const [experiments, setExperiments] = useState<UnifiedExperiment[]>([]);
+  const [gamificationProgress, setGamificationProgress] = useState<GamificationProgress | null>(null);
   const [achievements, setAchievements] = useState<
     Array<{ id: string; name: string; description: string; xp_reward: number; earned_at: string | null }>
   >([]);
-  const evaluatedCount = experiments.filter((exp) => getStatusConfig(exp.status).key === "evaluated").length;
-  const submittedCount = experiments.filter((exp) => getStatusConfig(exp.status).key === "submitted").length;
-  const pendingCount = experiments.filter((exp) => getStatusConfig(exp.status).key === "pending").length;
+
+  const evaluatedCount = experiments.filter((exp) => exp.status === "evaluated" || exp.status === "approved").length;
+  const submittedCount = experiments.filter((exp) => exp.status === "submitted").length;
+  const pendingCount = experiments.filter((exp) => exp.status === "pending" || exp.status === "draft").length;
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -74,80 +77,111 @@ export default function StudentProfile() {
           return;
         }
 
-        const { data: profile, error } = await supabase
+        const userId = data.session.user.id;
+
+        // 1️⃣ Fetch Profile details
+        const { data: profile, error: profileErr } = await supabase
           .from("profiles")
-          .select("role, name")
-          .eq("id", data.session.user.id)
+          .select("role, name, register_no, department, year, semester")
+          .eq("id", userId)
           .single();
 
-        if (error || profile?.role !== "student") {
+        if (profileErr || profile?.role !== "student") {
           navigate("/login");
           return;
         }
 
-      if (data.session.user.email) {
-        setEmail(data.session.user.email);
-      }
+        setEmail(data.session.user.email || "");
+        setRole(profile.role || "student");
+        setName(profile.name || "Student");
+        setRegisterNo(profile.register_no || "N/A");
+        setDepartment(profile.department || "N/A");
 
-      if (profile?.role) {
-        setRole(profile.role);
-      }
-      if (profile?.name) {
-        setName(profile.name);
-      }
+        if (profile.year || profile.semester) {
+          setYearSemester(`Year ${profile.year || "-"} · Sem ${profile.semester || "-"}`);
+        }
 
-      const { data: submissionRows } = await supabase
-        .from("submissions")
-        .select("exp_id, status, updated_at")
-        .eq("student_id", data.session.user.id)
-        .order("updated_at", { ascending: false });
+        // 2️⃣ Resolve Subject for Live Experiments Data
+        const paramSubjectId = searchParams.get("subject");
+        const paramSubjectName = searchParams.get("subjectName");
+        const storedSubject = getSelectedSubjectFromStorage();
 
-      const latestByExperiment = new Map<string, { status: string }>();
-      (submissionRows || []).forEach((row) => {
-        const expId = String(row.exp_id || "");
-        if (!expId || latestByExperiment.has(expId)) return;
-        latestByExperiment.set(expId, { status: String(row.status || "pending") });
-      });
+        const subjectId = paramSubjectId || storedSubject.id || "";
+        const subjectName = paramSubjectName || storedSubject.name || "";
+        setActiveSubjectName(subjectName);
 
-      const expIds = Array.from(latestByExperiment.keys());
-      let completedLabsMerge = 0;
-      if (expIds.length > 0) {
-        const { data: expMeta } = await supabase
-          .from("experiments")
-          .select("id, title, experiment_no, experiment_number")
-          .in("id", expIds);
+        let expList: UnifiedExperiment[] = [];
+        let completedCount = 0;
 
-        const mapped = (expMeta || []).map((exp: any) => ({
-          id: String(exp.id),
-          experiment_no: String(exp.experiment_no || exp.experiment_number || "?"),
-          title: String(exp.title || "Untitled"),
-          status: latestByExperiment.get(String(exp.id))?.status || "pending",
-        }));
-        setExperiments(mapped);
-        completedLabsMerge = mapped.filter((exp) => {
-          const key = getStatusConfig(exp.status).key;
-          return key === "evaluated" || key === "submitted";
-        }).length;
-      } else {
-        setExperiments([]);
-      }
+        if (subjectId) {
+          const unifiedResult = await getStudentExperimentData({ subjectId, subjectName });
+          expList = unifiedResult.experiments || [];
+          completedCount = expList.filter((e) => e.isCompleted || e.status === "evaluated" || e.status === "submitted").length;
 
-      const [progress, userAchievements] = await Promise.all([
-        getUserProgress(data.session.user.id),
-        getUserAchievements(data.session.user.id),
-      ]);
-      setGamificationProgress(mergeProgressWithExperimentActivity(progress, completedLabsMerge));
-      setAchievements(userAchievements);
+          if (unifiedResult.profile?.registerNo && unifiedResult.profile.registerNo !== "N/A") {
+            setRegisterNo(unifiedResult.profile.registerNo);
+          }
+          if (unifiedResult.profile?.department && unifiedResult.profile.department !== "N/A") {
+            setDepartment(unifiedResult.profile.department);
+          }
+        } else {
+          // Fallback: Query submissions directly across all subjects
+          const { data: submissionRows } = await supabase
+            .from("submissions")
+            .select("id, exp_id, experiment_id, status, marks, updated_at, submitted_date")
+            .eq("student_id", userId)
+            .order("updated_at", { ascending: false });
 
-      setLoading(false);
+          if (submissionRows && submissionRows.length > 0) {
+            expList = submissionRows.map((sub: any, idx: number) => ({
+              id: String(sub.id),
+              experimentId: String(sub.exp_id || sub.experiment_id || `exp-${idx + 1}`),
+              experimentNo: idx + 1,
+              title: `Experiment ${idx + 1}`,
+              status: String(sub.status || "pending").toLowerCase(),
+              marks: Number(sub.marks || 0),
+              facultyMarks: Number(sub.marks || 0),
+              finalMarks: Number(sub.marks || 0),
+              isOverridden: false,
+              evaluationSource: "faculty",
+              updatedAt: sub.updated_at || null,
+              submittedDate: sub.submitted_date || null,
+              isCompleted: sub.status === "evaluated" || sub.status === "submitted",
+              aim: "",
+              algorithm: "",
+              program: "",
+              output: "",
+              result: "",
+              images: [],
+              aiScore: null,
+              confidence: null,
+              aiStatus: null,
+              aiBreakdown: null,
+            }));
+            completedCount = expList.filter((e) => e.isCompleted).length;
+          }
+        }
+
+        setExperiments(expList);
+
+        // 3️⃣ Fetch Gamification & Achievements
+        const [progress, userAchievements] = await Promise.all([
+          getUserProgress(userId),
+          getUserAchievements(userId),
+        ]);
+
+        setGamificationProgress(mergeProgressWithExperimentActivity(progress, completedCount));
+        setAchievements(userAchievements);
+        setLoading(false);
       } catch (loadError) {
+        console.error("Profile load error:", loadError);
         setError(STUDENT_PROFILE_ERROR);
         setLoading(false);
       }
     };
 
     loadProfile();
-  }, [navigate]);
+  }, [navigate, searchParams]);
 
   async function logout() {
     await supabase.auth.signOut();
@@ -165,283 +199,231 @@ export default function StudentProfile() {
   return (
     <div className="faculty-bg-vibrant student-page-enter min-h-screen px-4 py-6 md:px-8 md:py-8">
       <div className="mx-auto flex w-full max-w-[1380px] items-start justify-center">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        className="w-full max-w-3xl relative overflow-hidden"
-      >
-        {/* Decorative gradient orbs */}
-        <div className="absolute -top-32 -right-32 h-64 w-64 rounded-full bg-blue-200/60 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-24 h-56 w-56 rounded-full bg-indigo-200/50 blur-3xl pointer-events-none" />
-
-        {error ? (
-          <div className="mb-6 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            <Activity className="w-4 h-4 shrink-0" />
-            {error}
-          </div>
-        ) : null}
-
-        {/* PROFILE HEADER */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.04, duration: 0.2, ease: "easeOut" }}
-          className="faculty-glass faculty-gradient-ring relative mb-6 rounded-3xl p-6 md:p-8"
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="w-full max-w-4xl relative overflow-hidden"
         >
-          <div className="absolute inset-0 rounded-2xl pointer-events-none" />
-          <div className="relative z-10 flex flex-col sm:flex-row items-center gap-5">
-            <motion.div
-              whileHover={{ scale: 1.08, rotate: [0, -3, 3, 0] }}
-              transition={{ duration: 0.3 }}
-              className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/30 ring-4 ring-blue-200"
-            >
-              <span className="text-2xl font-bold text-white select-none">
-                {getInitials(name || "S")}
-              </span>
-            </motion.div>
-            <div className="text-center sm:text-left">
-              <h1 className="bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-2xl font-bold text-transparent md:text-3xl">
-                {name || "Student"}
-              </h1>
-              <p className="mt-1 text-sm text-slate-600">{email}</p>
-              <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Active
-              </span>
+          {/* Decorative background glows */}
+          <div className="absolute -top-32 -right-32 h-64 w-64 rounded-full bg-indigo-200/50 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-24 -left-24 h-56 w-56 rounded-full bg-blue-200/50 blur-3xl pointer-events-none" />
+
+          {error ? (
+            <div className="mb-6 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              <Activity className="w-4 h-4 shrink-0" />
+              {error}
             </div>
-          </div>
-        </motion.div>
+          ) : null}
 
-        {/* PROFILE INFO CARDS */}
-        <div className="grid md:grid-cols-2 gap-4 mb-6">
-          <InfoCard icon={<User className="w-5 h-5" />} label="Name" value={name || "N/A"} accent="indigo" />
-          <InfoCard icon={<Mail className="w-5 h-5" />} label="Email" value={email} accent="blue" />
-          <InfoCard icon={<Shield className="w-5 h-5" />} label="Role" value={role.toUpperCase()} accent="indigo" />
-          <InfoCard icon={<Key className="w-5 h-5" />} label="Account Status" value="Active" accent="emerald" />
-        </div>
-
-        {/* ACADEMIC SUMMARY */}
-        <div className="mb-6 grid gap-4 grid-cols-2 md:grid-cols-4">
-          <StatCard icon={<FlaskConical className="w-5 h-5" />} label="Tracked" value={experiments.length} accent="indigo" />
-          <StatCard icon={<CheckCircle2 className="w-5 h-5" />} label="Evaluated" value={evaluatedCount} accent="emerald" />
-          <StatCard icon={<Send className="w-5 h-5" />} label="Submitted" value={submittedCount} accent="blue" />
-          <StatCard icon={<Clock className="w-5 h-5" />} label="Pending" value={pendingCount} accent="amber" />
-        </div>
-
-        {/* EXPERIMENT LIVE STATUS */}
-        <div className="mb-6">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900">
-            <div className="rounded-lg bg-blue-50 p-1.5">
-              <FlaskConical className="h-4 w-4 text-blue-600" />
-            </div>
-            Experiment Live Status
-          </h2>
-
-          <div className="grid gap-3">
-            {experiments.length === 0 && (
-              <div className="rounded-xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
-                No experiments started yet
-              </div>
-            )}
-
-            {experiments.map((exp) => {
-              const cfg = getStatusConfig(exp.status);
-              const borderColor =
-                cfg.key === "evaluated" ? "border-l-emerald-500" :
-                cfg.key === "submitted" ? "border-l-blue-500" :
-                cfg.key === "resubmit" ? "border-l-indigo-500" :
-                cfg.key === "draft" ? "border-l-amber-500" :
-                "border-l-slate-500";
-
-              return (
-                <motion.div
-                  key={exp.id}
-                  whileHover={{ y: -1, scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
-                  className={`faculty-surface flex items-center justify-between rounded-xl border border-slate-200 border-l-[3px] p-4 ${borderColor}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold ${
-                      cfg.key === "evaluated" ? "border-emerald-200 bg-emerald-50 text-emerald-700" :
-                      cfg.key === "submitted" ? "border-blue-200 bg-blue-50 text-blue-700" :
-                      cfg.key === "resubmit" ? "border-slate-300 bg-slate-100 text-slate-700" :
-                      cfg.key === "draft" ? "border-slate-200 bg-slate-100 text-slate-700" :
-                      "border-amber-200 bg-amber-50 text-amber-700"
-                    }`}>
-                      {exp.experiment_no}
-                    </span>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Experiment {exp.experiment_no}</p>
-                      <p className="text-xs text-slate-500">{exp.title}</p>
-                    </div>
-                  </div>
-                  <StatusBadge status={exp.status} />
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* GAMIFICATION STATS */}
-        {gamificationProgress && (
-          <div className="mb-6">
-            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900">
-              <div className="rounded-lg bg-amber-50 p-1.5">
-                <Trophy className="h-4 w-4 text-amber-600" />
-              </div>
-              Gamification Stats
-            </h2>
-
-            <div className="grid grid-cols-2 gap-4">
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="chart-card flex items-center gap-3 p-4"
-              >
-                <div className="rounded-lg bg-blue-50 p-2.5">
-                  <Award className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Level</p>
-                  <p className="text-xl font-bold text-slate-900">{gamificationProgress.level}</p>
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 }}
-                className="chart-card flex items-center gap-3 p-4"
-              >
-                <div className="rounded-lg bg-amber-50 p-2.5">
-                  <Sparkles className="h-5 w-5 text-amber-600" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-500">XP Points</p>
-                  <p className="text-xl font-bold text-slate-900">{gamificationProgress.xp_points.toLocaleString()}</p>
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="chart-card flex items-center gap-3 p-4"
-              >
-                <div className="rounded-lg bg-amber-50 p-2.5">
-                  <Flame className="h-5 w-5 text-amber-600" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Current Streak</p>
-                  <p className="text-xl font-bold text-slate-900">{gamificationProgress.current_streak} day{gamificationProgress.current_streak !== 1 ? "s" : ""}</p>
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
-                className="chart-card flex items-center gap-3 p-4"
-              >
-                <div className="rounded-lg bg-emerald-50 p-2.5">
-                  <FlaskConical className="h-5 w-5 text-emerald-600" />
-                </div>
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Labs Completed</p>
-                  <p className="text-xl font-bold text-slate-900">{gamificationProgress.labs_completed}</p>
-                </div>
-              </motion.div>
-            </div>
-          </div>
-        )}
-
-        {/* ACHIEVEMENTS EARNED */}
-        {gamificationProgress && (
+          {/* PROFILE HEADER CARD */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.12, duration: 0.2, ease: "easeOut" }}
-            className="faculty-surface mb-6 rounded-2xl p-5"
+            transition={{ delay: 0.04, duration: 0.2, ease: "easeOut" }}
+            className="faculty-glass faculty-gradient-ring relative mb-6 rounded-3xl p-6 md:p-8"
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="flex items-center gap-2 text-base font-semibold text-slate-900">
-                <div className="rounded-lg bg-indigo-50 p-1.5">
-                  <Award className="h-4 w-4 text-indigo-600" />
+            <div className="relative z-10 flex flex-col sm:flex-row items-center gap-6">
+              <motion.div
+                whileHover={{ scale: 1.06 }}
+                transition={{ duration: 0.2 }}
+                className="flex h-22 w-22 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 shadow-xl shadow-indigo-500/20 ring-4 ring-indigo-100"
+              >
+                <span className="text-3xl font-extrabold text-white select-none">
+                  {getInitials(name || "S")}
+                </span>
+              </motion.div>
+              <div className="text-center sm:text-left min-w-0 flex-1">
+                <h1 className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 bg-clip-text text-2xl font-extrabold text-transparent md:text-3xl">
+                  {name || "Student"}
+                </h1>
+                <p className="mt-1 text-sm font-medium text-slate-600">{email}</p>
+
+                <div className="mt-3 flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Student Account Active
+                  </span>
+                  {activeSubjectName && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                      <BookOpen className="h-3 w-3" /> {activeSubjectName}
+                    </span>
+                  )}
                 </div>
-                Achievements Earned
-              </h3>
-              <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                {achievements.length} earned
+              </div>
+            </div>
+          </motion.div>
+
+          {/* PERSONAL & ACADEMIC DETAILS GRID */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+            <InfoCard icon={<User className="w-5 h-5" />} label="Full Name" value={name || "N/A"} accent="indigo" />
+            <InfoCard icon={<Hash className="w-5 h-5" />} label="Register Number" value={registerNo} accent="blue" />
+            <InfoCard icon={<Mail className="w-5 h-5" />} label="Email Address" value={email} accent="indigo" />
+            <InfoCard icon={<Building2 className="w-5 h-5" />} label="Department" value={department} accent="emerald" />
+            <InfoCard icon={<GraduationCap className="w-5 h-5" />} label="Year & Semester" value={yearSemester} accent="amber" />
+            <InfoCard icon={<Shield className="w-5 h-5" />} label="Portal Access" value="STUDENT" accent="emerald" />
+          </div>
+
+          {/* ACADEMIC PROGRESS METRICS */}
+          <div className="mb-6 grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCard icon={<FlaskConical className="w-5 h-5" />} label="Total Tracked" value={experiments.length} accent="indigo" />
+            <StatCard icon={<CheckCircle2 className="w-5 h-5" />} label="Evaluated" value={evaluatedCount} accent="emerald" />
+            <StatCard icon={<Send className="w-5 h-5" />} label="Submitted" value={submittedCount} accent="blue" />
+            <StatCard icon={<Clock className="w-5 h-5" />} label="Pending" value={pendingCount} accent="amber" />
+          </div>
+
+          {/* EXPERIMENTS REAL-TIME ACTIVITY LIST */}
+          <div className="mb-6 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="flex items-center gap-2.5 text-base font-bold text-slate-900">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                  <FlaskConical className="h-4.5 w-4.5" />
+                </div>
+                Experiment Submissions & Live Status
+              </h2>
+              <span className="text-xs font-semibold text-slate-500">
+                {experiments.length} Records
               </span>
             </div>
 
-            {achievements.length === 0 ? (
-              <p className="text-sm text-slate-500 text-center py-4">No achievements yet</p>
-            ) : (
-              <div className="space-y-2.5">
-                {achievements.slice(0, 3).map((ach) => (
-                  <div
-                    key={ach.id}
-                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5"
-                  >
-                    <div className="rounded-lg bg-amber-50 p-1.5">
-                      <Trophy className="h-3.5 w-3.5 text-amber-600" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">{ach.name}</p>
-                      <p className="text-xs text-slate-500">
-                        {ach.earned_at
-                          ? new Date(ach.earned_at).toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })
-                          : "Recently earned"}
-                      </p>
-                    </div>
-                    <span className="text-xs font-semibold text-amber-700">+{ach.xp_reward} XP</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </motion.div>
-        )}
-
-        {/* ACTIONS */}
-        <div className="grid md:grid-cols-3 gap-4">
-          <ActionCard
-            icon={<Settings className="w-5 h-5" />}
-            title="Account Settings"
-            desc="Manage preferences"
-            disabled
-          />
-          <ActionCard
-            icon={<Key className="w-5 h-5" />}
-            title="Change Password"
-            desc="Update credentials"
-            disabled
-          />
-
-          <motion.button
-            whileHover={{ y: -1 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={logout}
-            className="student-btn-primary group relative min-h-[44px] overflow-hidden rounded-xl border border-amber-200 bg-amber-50 p-4 text-left text-amber-700 transition-all hover:bg-amber-100"
-          >
-            <div className="absolute inset-0 bg-card-shine pointer-events-none" />
-            <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-1">
-                <div className="rounded-lg bg-amber-100 p-2">
-                  <LogOut className="w-4 h-4" />
+            <div className="grid gap-2.5 max-h-[420px] overflow-y-auto pr-1">
+              {experiments.length === 0 ? (
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-6 text-center text-sm font-medium text-slate-500">
+                  No experiment records found for this profile
                 </div>
-                <h3 className="font-semibold">Logout</h3>
-              </div>
-              <p className="text-sm text-amber-600">Sign out from your account</p>
+              ) : (
+                experiments.map((exp) => {
+                  const cfg = getStatusConfig(exp.status);
+                  const isDone = exp.status === "evaluated" || exp.status === "approved";
+                  const isSubmitted = exp.status === "submitted";
+
+                  return (
+                    <motion.div
+                      key={exp.id}
+                      whileHover={{ y: -1 }}
+                      className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5 transition-all hover:bg-white hover:border-indigo-200 hover:shadow-xs"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-mono font-bold text-xs ${
+                            isDone
+                              ? "bg-emerald-100 text-emerald-800"
+                              : isSubmitted
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          Exp {exp.experimentNo}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-slate-900 truncate">
+                            {exp.title}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Marks: <span className="font-semibold text-slate-700">{exp.marks ?? "-"}</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0 ml-3">
+                        <StatusBadge status={exp.status} />
+                      </div>
+                    </motion.div>
+                  );
+                })
+              )}
             </div>
-          </motion.button>
-        </div>
-      </motion.div>
+          </div>
+
+          {/* GAMIFICATION & ACHIEVEMENTS */}
+          {gamificationProgress && (
+            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Stats Card */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+                <h3 className="mb-4 flex items-center gap-2.5 text-base font-bold text-slate-900">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                    <Trophy className="h-4.5 w-4.5" />
+                  </div>
+                  Gamification Level & XP
+                </h3>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Current Level</p>
+                    <p className="text-2xl font-extrabold text-indigo-600 mt-0.5">Level {gamificationProgress.level}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Experience Points</p>
+                    <p className="text-2xl font-extrabold text-amber-600 mt-0.5">{gamificationProgress.xp_points} XP</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Current Streak</p>
+                    <p className="text-xl font-bold text-slate-800 mt-0.5">{gamificationProgress.current_streak} Days</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Completed Labs</p>
+                    <p className="text-xl font-bold text-emerald-600 mt-0.5">{gamificationProgress.labs_completed}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Achievements Card */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="flex items-center gap-2.5 text-base font-bold text-slate-900">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                      <Award className="h-4.5 w-4.5" />
+                    </div>
+                    Unlocked Achievements
+                  </h3>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                    {achievements.length} Unlocked
+                  </span>
+                </div>
+
+                {achievements.length === 0 ? (
+                  <p className="text-sm font-medium text-slate-500 text-center py-6">No achievements unlocked yet</p>
+                ) : (
+                  <div className="space-y-2.5 max-h-[160px] overflow-y-auto">
+                    {achievements.map((ach) => (
+                      <div
+                        key={ach.id}
+                        className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-slate-50/60 px-3.5 py-2.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-bold text-slate-900">{ach.name}</p>
+                          <p className="text-[11px] text-slate-500 truncate">{ach.description || "Milestone completed"}</p>
+                        </div>
+                        <span className="text-xs font-extrabold text-amber-600 shrink-0 ml-2">+{ach.xp_reward} XP</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ACTIONS & LOGOUT */}
+          <div className="grid md:grid-cols-3 gap-4">
+            <ActionCard icon={<Settings className="w-5 h-5" />} title="Account Settings" desc="Manage profile preferences" disabled />
+            <ActionCard icon={<Key className="w-5 h-5" />} title="Change Password" desc="Update security credentials" disabled />
+
+            <motion.button
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={logout}
+              className="flex min-h-[44px] items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/90 p-4 text-left font-bold text-amber-800 transition-all hover:bg-amber-100 shadow-xs"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                <LogOut className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-sm block">Sign Out Account</span>
+                <span className="text-xs font-normal text-amber-600">End current session</span>
+              </div>
+            </motion.button>
+          </div>
+        </motion.div>
       </div>
     </div>
   );
@@ -494,19 +476,16 @@ function InfoCard({
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      whileHover={{ y: -3, scale: 1.01 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ duration: 0.18, ease: "easeOut" }}
-      className={`faculty-surface rounded-xl border border-slate-200 p-4 shadow-sm ${s.hover} relative flex items-center gap-4 overflow-hidden transition-all group`}
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
+      className={`rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm ${s.hover} flex items-center gap-3.5 transition-all`}
     >
-      <div className="absolute inset-0 bg-card-shine pointer-events-none" />
-      <div className={`absolute inset-0 bg-gradient-to-br ${s.ring} opacity-0 group-hover:opacity-100 transition-opacity`} />
-      <div className={`p-2.5 ${s.iconBg} rounded-lg relative z-10`}>
+      <div className={`p-2.5 ${s.iconBg} rounded-lg shrink-0`}>
         <div className={s.iconText}>{icon}</div>
       </div>
-      <div className="relative z-10 min-w-0">
-        <p className="text-xs font-medium uppercase tracking-wider text-slate-500">{label}</p>
-        <p className="mt-0.5 truncate font-bold text-slate-900">{value}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+        <p className="mt-0.5 truncate text-sm font-bold text-slate-900">{value}</p>
       </div>
     </motion.div>
   );
@@ -528,17 +507,15 @@ function StatCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -3, scale: 1.01 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ duration: 0.18, ease: "easeOut" }}
-      className={`chart-card rounded-xl border border-slate-200 p-4 text-center shadow-sm ${s.hover} relative overflow-hidden transition-all group`}
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
+      className={`rounded-xl border border-slate-200/80 bg-white p-4 text-center shadow-sm ${s.hover} transition-all`}
     >
-      <div className="absolute inset-0 bg-card-shine pointer-events-none" />
-      <div className={`mx-auto w-10 h-10 rounded-full flex items-center justify-center ${s.iconBg} mb-2 relative z-10`}>
+      <div className={`mx-auto w-9 h-9 rounded-full flex items-center justify-center ${s.iconBg} mb-1.5`}>
         <div className={s.iconText}>{icon}</div>
       </div>
-      <p className="relative z-10 text-2xl font-bold text-slate-900">{value}</p>
-      <p className="relative z-10 mt-1 text-xs text-slate-500">{label}</p>
+      <p className="text-2xl font-extrabold text-slate-900">{value}</p>
+      <p className="mt-0.5 text-xs font-semibold text-slate-500">{label}</p>
     </motion.div>
   );
 }
@@ -555,36 +532,20 @@ function ActionCard({
   disabled?: boolean;
 }) {
   return (
-    <motion.button
-      type="button"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      whileHover={disabled ? {} : { y: -3, scale: 1.01 }}
-      whileTap={disabled ? {} : { scale: 0.98 }}
-      transition={{ duration: 0.18, ease: "easeOut" }}
-      disabled={disabled}
-      className={`min-h-[44px] rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-left transition-all group relative overflow-hidden ${disabled ? "cursor-not-allowed" : "cursor-pointer hover:border-blue-300 hover:bg-blue-50/50"}`}
+    <div
+      className={`rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-left transition-all ${
+        disabled ? "opacity-75 cursor-not-allowed" : ""
+      }`}
     >
-      <div className="absolute inset-0 bg-card-shine pointer-events-none" />
-      <div className="relative z-10">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="rounded-lg bg-slate-100 p-2">
-            <div className="text-slate-600">{icon}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-slate-700">{title}</h3>
-            {disabled && <Lock className="w-3.5 h-3.5 text-slate-500" />}
-          </div>
+      <div className="flex items-center gap-3 mb-1.5">
+        <div className="rounded-lg bg-slate-100 p-2 text-slate-600">{icon}</div>
+        <div className="flex items-center gap-2">
+          <h3 className="font-bold text-sm text-slate-700">{title}</h3>
+          {disabled && <Lock className="w-3.5 h-3.5 text-slate-400" />}
         </div>
-        <p className="text-sm text-slate-500">{desc}</p>
-        {disabled && (
-          <span className="mt-2 inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
-            <Sparkles className="w-3 h-3" />
-            Coming soon
-          </span>
-        )}
       </div>
-    </motion.button>
+      <p className="text-xs text-slate-500">{desc}</p>
+    </div>
   );
 }
 
@@ -593,6 +554,7 @@ function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
     evaluated: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    approved: "border-emerald-200 bg-emerald-50 text-emerald-700",
     pending: "border-amber-200 bg-amber-50 text-amber-700",
     draft: "border-slate-200 bg-slate-100 text-slate-700",
     submitted: "border-blue-200 bg-blue-50 text-blue-700",
@@ -601,8 +563,8 @@ function StatusBadge({ status }: { status: string }) {
   const display = getStatusConfig(status);
   const badgeClass = map[normalized] || "border-slate-200 bg-slate-100 text-slate-700";
   return (
-    <div className={`student-status-badge inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClass}`}>
-      <span className="h-2 w-2 rounded-full bg-current opacity-70" />
+    <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${badgeClass}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
       {display.label}
     </div>
   );

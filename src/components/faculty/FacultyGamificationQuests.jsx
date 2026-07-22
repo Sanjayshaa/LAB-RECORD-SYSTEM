@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, Fragment } from "react";
 import { supabase } from "@/lib/supabase";
-import { assignQuestTask, fetchCreatedTasks } from "@/services/gamificationTasksClient";
+import { assignQuestTask, fetchCreatedTasks, fetchQuestCompletions, verifyQuestTask } from "@/services/gamificationTasksClient";
 import { getFacultySubjectEnrollmentProfiles } from "@/services/facultyDataService";
-import { Send, ListChecks, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
+import { Send, ListChecks, CheckCircle2, AlertCircle, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import ShellCard from "@/components/admin/ShellCard";
 import EmptyState from "@/components/admin/EmptyState";
 
@@ -18,6 +18,49 @@ export default function FacultyGamificationQuests({ subjectId, subjectName }) {
   const [xpReward, setXpReward] = useState(50);
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState({ type: "", text: "" });
+
+  const [expandedQuestId, setExpandedQuestId] = useState(null);
+  const [completions, setCompletions] = useState({});
+  const [completionsLoading, setCompletionsLoading] = useState({});
+  const [verifyingId, setVerifyingId] = useState("");
+
+  const toggleExpand = async (taskId, isGlobal) => {
+    if (expandedQuestId === taskId) {
+      setExpandedQuestId(null);
+      return;
+    }
+    setExpandedQuestId(taskId);
+    if (isGlobal && !completions[taskId]) {
+      setCompletionsLoading((prev) => ({ ...prev, [taskId]: true }));
+      try {
+        const rows = await fetchQuestCompletions(taskId);
+        setCompletions((prev) => ({ ...prev, [taskId]: rows }));
+      } catch (err) {
+        console.error("Failed to load completions", err);
+      } finally {
+        setCompletionsLoading((prev) => ({ ...prev, [taskId]: false }));
+      }
+    }
+  };
+
+  const handleVerify = async (taskId, studentId = null) => {
+    const key = `${taskId}-${studentId || "direct"}`;
+    setVerifyingId(key);
+    setMsg({ type: "", text: "" });
+    try {
+      await verifyQuestTask(taskId, studentId || undefined);
+      setMsg({ type: "success", text: "Quest submission successfully verified and XP awarded!" });
+      await loadData();
+      if (studentId) {
+        const rows = await fetchQuestCompletions(taskId);
+        setCompletions((prev) => ({ ...prev, [taskId]: rows }));
+      }
+    } catch (err) {
+      setMsg({ type: "error", text: err instanceof Error ? err.message : "Failed to verify quest" });
+    } finally {
+      setVerifyingId("");
+    }
+  };
 
   const loadData = useCallback(async () => {
     if (!subjectId) {
@@ -198,6 +241,7 @@ export default function FacultyGamificationQuests({ subjectId, subjectName }) {
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
+                  <th className="px-4 py-2.5 text-left text-slate-600 w-8"></th>
                   <th className="px-4 py-2.5 text-left text-slate-600">Target Student</th>
                   <th className="px-4 py-2.5 text-left text-slate-600">Quest Title</th>
                   <th className="px-4 py-2.5 text-right text-slate-600">XP Reward</th>
@@ -205,22 +249,138 @@ export default function FacultyGamificationQuests({ subjectId, subjectName }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {tasks.map((t) => (
-                  <tr key={t.id} className="bg-white/80">
-                    <td className="px-4 py-2.5 font-medium text-slate-800">
-                      {t.is_global || !t.student_id ? "🌟 All Students (Global)" : t.student_name || t.student_id?.slice(0, 8) || "Student"}
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-700">{t.title}</td>
-                    <td className="px-4 py-2.5 text-right font-semibold text-indigo-600">+{t.xp_reward} XP</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        t.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                      }`}>
-                        {t.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {tasks.map((t) => {
+                  const isGlobal = t.is_global || !t.student_id;
+                  const isExpanded = expandedQuestId === t.id;
+                  return (
+                    <Fragment key={t.id}>
+                      <tr
+                        onClick={() => void toggleExpand(t.id, isGlobal)}
+                        className="bg-white/80 hover:bg-slate-50/80 cursor-pointer transition-colors"
+                      >
+                        <td className="px-4 py-2.5 text-slate-400">
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 font-medium text-slate-800">
+                          {isGlobal ? "🌟 All Students (Global)" : t.student_name || t.student_id?.slice(0, 8) || "Student"}
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-700 font-semibold">{t.title}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-indigo-600">+{t.xp_reward} XP</td>
+                        <td className="px-4 py-2.5 text-right">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            t.status === "completed" ? "bg-emerald-50 text-emerald-700" :
+                            t.status === "submitted" ? "bg-blue-50 text-blue-700" :
+                            "bg-amber-50 text-amber-700"
+                          }`}>
+                            {t.status}
+                          </span>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="bg-slate-50/50">
+                          <td colSpan={5} className="px-6 py-4 border-t border-b border-slate-100">
+                            <div className="space-y-4">
+                              {t.description && (
+                                <div>
+                                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Description</span>
+                                  <p className="text-sm text-slate-700 mt-1">{t.description}</p>
+                                </div>
+                              )}
+                              
+                              {!isGlobal ? (
+                                <div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Student Submission</span>
+                                    {t.status === "submitted" && (
+                                      <button
+                                        type="button"
+                                        disabled={verifyingId === `${t.id}-direct`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          void handleVerify(t.id);
+                                        }}
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition disabled:opacity-50"
+                                      >
+                                        <CheckCircle2 className="h-3.5 w-3.5" />
+                                        {verifyingId === `${t.id}-direct` ? "Verifying..." : "Verify & Award XP"}
+                                      </button>
+                                    )}
+                                  </div>
+                                  {t.submission_notes ? (
+                                    <div className="mt-1.5 rounded-lg border border-indigo-100 bg-white p-3 shadow-sm text-sm text-slate-800 font-mono">
+                                      {t.submission_notes}
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs text-slate-500 italic mt-1">No work submitted yet.</p>
+                                  )}
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Completions & Submissions</span>
+                                  {completionsLoading[t.id] ? (
+                                    <div className="h-10 animate-pulse bg-slate-100 rounded-lg mt-2" />
+                                  ) : !completions[t.id] || completions[t.id].length === 0 ? (
+                                    <p className="text-xs text-slate-500 italic mt-1">No students have completed this global quest yet.</p>
+                                  ) : (
+                                    <ul className="mt-2 space-y-2.5">
+                                      {completions[t.id].map((c) => (
+                                        <li key={c.student_id} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm text-sm">
+                                          <div className="flex items-center justify-between font-semibold text-slate-800">
+                                            <div className="flex items-center gap-2">
+                                              <span>{c.student_name} ({c.register_no})</span>
+                                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                                c.status === "completed" ? "bg-emerald-50 text-emerald-700" :
+                                                c.status === "submitted" ? "bg-blue-50 text-blue-700 animate-pulse" :
+                                                "bg-amber-50 text-amber-700"
+                                              }`}>
+                                                {c.status}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                              <span className="text-[10px] font-normal text-slate-500">
+                                                {new Date(c.completed_at).toLocaleString()}
+                                              </span>
+                                              {c.status === "submitted" && (
+                                                <button
+                                                  type="button"
+                                                  disabled={verifyingId === `${t.id}-${c.student_id}`}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    void handleVerify(t.id, c.student_id);
+                                                  }}
+                                                  className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition disabled:opacity-50"
+                                                >
+                                                  <CheckCircle2 className="h-3 w-3" />
+                                                  {verifyingId === `${t.id}-${c.student_id}` ? "Verifying..." : "Verify & Approve"}
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+                                          {c.submission_notes ? (
+                                            <div className="mt-2 rounded bg-slate-50 p-2 text-xs text-slate-700 font-mono border border-slate-100">
+                                              <span className="text-[10px] font-bold text-slate-400 block mb-0.5">SUBMISSION:</span>
+                                              {c.submission_notes}
+                                            </div>
+                                          ) : (
+                                            <p className="text-xs text-slate-400 italic mt-1">Completed without notes.</p>
+                                          )}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

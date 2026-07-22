@@ -20,6 +20,7 @@ import {
   Activity,
   FlaskConical,
   Trophy,
+  ClipboardList,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import BackButton from "@/components/BackButton";
@@ -55,8 +56,9 @@ const workspaceNavItems = [
   { icon: Users,           label: "Students",    path: "/faculty/students" },
   { icon: FileText,        label: "Submissions", path: "/faculty/submissions" },
   { icon: FlaskConical,    label: "Experiments", path: "/faculty/experiments" },
-  { icon: BarChart3,       label: "Analytics",   path: "/faculty/reports" },
-  { icon: Trophy,          label: "Leaderboard", path: "/faculty/leaderboard" },
+  { icon: BarChart3,       label: "Analytics",       path: "/faculty/reports" },
+  { icon: ClipboardList,   label: "Internal Marks",  path: "/faculty/internal-marks" },
+  { icon: Trophy,          label: "Leaderboard",     path: "/faculty/leaderboard" },
 ];
 
 const systemNavItems = [

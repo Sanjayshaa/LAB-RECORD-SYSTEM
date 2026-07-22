@@ -28,8 +28,12 @@ export function mergeProgressWithExperimentActivity(
   completedLabsFromExperiments: number
 ): GamificationProgress {
   const completed = Math.max(0, Math.floor(Number(completedLabsFromExperiments) || 0));
-  const derivedXp = completed * LAB_XP_PER_COMPLETION;
-  const xp = Math.max(normalizeCount(stored.xp_points), derivedXp);
+  const derivedLabXp = completed * LAB_XP_PER_COMPLETION;
+  const storedXp = normalizeCount(stored.xp_points);
+
+  // If stored.xp_points is less than derivedLabXp, stored.xp_points contains quest XP that hasn't been merged with lab XP yet.
+  // Add them together so quest XP is never lost and always increases Experience Points.
+  const xp = storedXp >= derivedLabXp ? storedXp : storedXp + derivedLabXp;
   const labs = Math.max(normalizeCount(stored.labs_completed), completed);
   const levelFromXp = Math.floor(xp / LEVEL_DIVISOR) + 1;
   const level = Math.max(normalizeCount(stored.level, 1) || 1, levelFromXp);
@@ -81,7 +85,7 @@ async function resolveGamificationTable(): Promise<"profiles" | "users"> {
 }
 
 /** Students: POST syncs profiles from submissions + student_experiments (service role); keeps leaderboard accurate. */
-async function trySyncStudentProgress(userId: string): Promise<GamificationProgress | null> {
+export async function trySyncStudentProgress(userId: string): Promise<GamificationProgress | null> {
   const base = getGamificationApiBase().replace(/\/$/, "");
   try {
     const {

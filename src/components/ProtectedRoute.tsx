@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { clearStaleAuthStorage, isInvalidRefreshTokenError } from "@/lib/clientSession";
@@ -21,6 +21,7 @@ interface ProtectedRouteProps {
  * ✅ No nested router
  * ✅ Role validation
  * ✅ Vercel safe
+ * ✅ Tab-switch safe (debounced session check, no spurious logout)
  * ❌ No role routing logic (handled in AuthCallback)
  */
 
@@ -35,6 +36,11 @@ export default function ProtectedRoute({
   const [needsSetup, setNeedsSetup] = useState(false);
   const [resolvedRole, setResolvedRole] = useState<AppRole | null>(null);
   const requireAdminDepartment = import.meta.env.VITE_REQUIRE_ADMIN_DEPARTMENT === "true";
+
+  // Track last known valid session so we never log out on a transient null
+  const lastKnownValidSession = useRef(false);
+  // Debounce timer for session loss detection
+  const logoutDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -55,18 +61,45 @@ export default function ProtectedRoute({
           return;
         }
 
-        // ❌ Not logged in
+        // ❌ No session found — but only treat as logged-out if we never had a valid session
+        // or if we wait a debounce to confirm it's not a transient wake state
         if (!session?.user) {
+          if (lastKnownValidSession.current) {
+            // We HAD a session — wait 2.5 seconds before assuming it's really gone
+            // (handles tab-wake token refresh timing gaps)
+            if (!logoutDebounceTimer.current) {
+              logoutDebounceTimer.current = setTimeout(async () => {
+                if (!mounted) return;
+                const { data: retry } = await supabase.auth.getSession();
+                if (!retry.session?.user) {
+                  // Still no session after retry → genuine logout
+                  setIsLoggedIn(false);
+                  setAllowed(false);
+                  setLoading(false);
+                }
+                logoutDebounceTimer.current = null;
+              }, 2500);
+            }
+            // Keep showing the page while we wait
+            return;
+          }
+
           setIsLoggedIn(false);
           setAllowed(false);
           setLoading(false);
           return;
         }
 
+        // Session is valid — clear any pending logout timer
+        if (logoutDebounceTimer.current) {
+          clearTimeout(logoutDebounceTimer.current);
+          logoutDebounceTimer.current = null;
+        }
+        lastKnownValidSession.current = true;
         setIsLoggedIn(true);
 
         const userId = session.user.id;
-        const { data: profile, error } = await supabase
+        const { data: profile } = await supabase
           .from("profiles")
           .select("role, department, year, semester")
           .eq("id", userId)
@@ -105,7 +138,6 @@ export default function ProtectedRoute({
         if (!allowedRole) {
           setAllowed(true);
         } else {
-          // Role mismatch goes to a single deny page.
           if (resolvedRole === allowedRole) {
             setAllowed(true);
           } else {
@@ -117,9 +149,15 @@ export default function ProtectedRoute({
         setLoading(false);
       } catch (err) {
         console.error("ProtectedRoute error:", err);
-        setAllowed(false);
-        setNeedsSetup(false);
-        setLoading(false);
+        // On exception, don't log out if we previously had a valid session
+        if (!lastKnownValidSession.current) {
+          setAllowed(false);
+          setNeedsSetup(false);
+          setLoading(false);
+        } else {
+          // Keep current auth state, just stop loading
+          setLoading(false);
+        }
       }
     };
 
@@ -127,6 +165,10 @@ export default function ProtectedRoute({
 
     return () => {
       mounted = false;
+      if (logoutDebounceTimer.current) {
+        clearTimeout(logoutDebounceTimer.current);
+        logoutDebounceTimer.current = null;
+      }
     };
   }, [allowedRole, requireAdminDepartment]);
 

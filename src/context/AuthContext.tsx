@@ -79,25 +79,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     // 2️⃣ Listen to auth changes (login/logout)
+    // IMPORTANT: Only act on SIGNED_OUT for logout — never on transient null sessions
+    // from TOKEN_REFRESHED, INITIAL_SESSION, or tab wake events (prevents spurious logout).
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        const sessionUser = session?.user ?? null
-        setUser(sessionUser)
-
-        if (sessionUser) {
-          fetchUserProfile(sessionUser.id)
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      const sessionUser = session?.user ?? null;
+      if (sessionUser) {
+        setUser(sessionUser);
+        // Only re-fetch profile on meaningful auth events, not every token refresh
+        if (event === "SIGNED_IN" || event === "USER_UPDATED") {
+          fetchUserProfile(sessionUser.id);
         } else {
-          setRole(null)
-          setProfile(null)
-          setLoading(false)
+          // For TOKEN_REFRESHED etc., just update the user object quietly
+          setUser(sessionUser);
         }
+      } else if (event === "SIGNED_OUT") {
+        // Only explicit sign-out should clear auth state
+        setUser(null);
+        setRole(null);
+        setProfile(null);
+        setLoading(false);
       }
-    )
+      // All other events with null session (e.g. token refresh gap) are intentionally ignored
+    });
 
-    return () => subscription.unsubscribe()
-  }, [])
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // 🔐 Fetch full profile from DB
   async function fetchUserProfile(userId: string) {

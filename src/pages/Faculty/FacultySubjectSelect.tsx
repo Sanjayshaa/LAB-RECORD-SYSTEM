@@ -14,6 +14,12 @@ import {
   BarChart3,
   Clock,
   Plus,
+  Sparkles,
+  Building2,
+  FlaskConical,
+  FileText,
+  ExternalLink,
+  Zap,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { clearAllUserScope } from "@/lib/clientSession";
@@ -45,6 +51,12 @@ export default function FacultySubjectSelect() {
   const [searchParams] = useSearchParams();
   const hasAutoNavigatedRef = useRef(false);
   const [subjects, setSubjects] = useState<FacultySubject[]>([]);
+  const [facultyProfile, setFacultyProfile] = useState<{
+    name: string;
+    department: string;
+    year: string;
+    semester: string;
+  }>({ name: "Faculty", department: "", year: "", semester: "" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const shouldAutoSelect = searchParams.get("auto") === "1";
@@ -63,9 +75,19 @@ export default function FacultySubjectSelect() {
 
         const profileRes = await supabase
           .from("profiles")
-          .select("department, year, semester")
+          .select("name, department, year, semester")
           .eq("id", user.id)
           .maybeSingle();
+
+        if (profileRes.data) {
+          setFacultyProfile({
+            name: profileRes.data.name || "Faculty Member",
+            department: profileRes.data.department || "",
+            year: profileRes.data.year || "",
+            semester: profileRes.data.semester || "",
+          });
+        }
+
         const facultyDepartment = normalizeDepartmentKey(profileRes.data?.department || "");
         const facultyYear = String(profileRes.data?.year || "").trim();
         const facultySemester = String(profileRes.data?.semester || "").trim();
@@ -101,8 +123,6 @@ export default function FacultySubjectSelect() {
           return true;
         });
 
-        // Auto-select only when there is a single assigned subject.
-        // For multiple subjects, force explicit faculty choice to avoid incorrect defaults.
         if (shouldAutoSelect && !hasAutoNavigatedRef.current && filtered.length === 1) {
           const onlySubject = filtered[0];
           const subjectId = String(onlySubject?.subject_id || onlySubject?.subjects?.id || "").trim();
@@ -150,15 +170,15 @@ export default function FacultySubjectSelect() {
     return (
       <div className="faculty-bg-vibrant flex min-h-screen items-center justify-center">
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
+          initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="faculty-glass faculty-gradient-ring flex flex-col items-center gap-4 rounded-3xl px-10 py-10"
+          className="faculty-glass faculty-gradient-ring flex flex-col items-center gap-4 rounded-3xl px-10 py-10 shadow-lg"
         >
-          <div className="rounded-xl bg-gradient-to-br from-blue-600 to-indigo-500 p-3 shadow-md">
+          <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 p-3.5 shadow-md">
             <GraduationCap className="h-8 w-8 text-white" />
           </div>
-          <Loader2 className="h-7 w-7 animate-spin text-blue-500" />
-          <p className="text-sm font-medium text-slate-600">Loading your subjects…</p>
+          <Loader2 className="h-7 w-7 animate-spin text-indigo-600" />
+          <p className="text-sm font-semibold text-slate-700">Loading assigned subjects…</p>
         </motion.div>
       </div>
     );
@@ -166,14 +186,17 @@ export default function FacultySubjectSelect() {
 
   if (error) {
     return (
-      <div className="faculty-bg-vibrant flex min-h-screen items-center justify-center">
-        <div className="faculty-surface rounded-2xl p-8 text-center">
-          <p className="mb-4 text-sm text-rose-700">{error}</p>
+      <div className="faculty-bg-vibrant flex min-h-screen items-center justify-center px-4">
+        <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-lg max-w-md">
+          <p className="mb-4 text-sm font-bold text-rose-700">{error}</p>
           <button
-            onClick={() => { setError(null); navigate(0); }}
-            className="rounded-lg border border-rose-200 bg-white px-4 py-2 text-sm text-rose-700 transition hover:bg-rose-100"
+            onClick={() => {
+              setError(null);
+              navigate(0);
+            }}
+            className="rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700"
           >
-            Reload
+            Try Again
           </button>
         </div>
       </div>
@@ -181,268 +204,186 @@ export default function FacultySubjectSelect() {
   }
 
   return (
-    <div className="faculty-bg-vibrant min-h-screen text-slate-800">
-
-      {/* ── Top Command Bar (matches FacultyLayout desktop top bar) ── */}
-      <div className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/70 px-6 py-3 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1380px] items-center justify-between">
-          {/* Brand */}
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-gradient-to-br from-blue-600 to-indigo-500 p-2 shadow-md ring-1 ring-blue-300/40">
-              <GraduationCap className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-blue-700">Faculty Panel</p>
-              <p className="text-[11px] text-slate-500">Digital Lab Workspace</p>
-            </div>
-          </div>
-
-          {/* Breadcrumb + Live pill */}
-          <div className="hidden items-center gap-2 md:flex">
-            <span className="text-xs text-slate-500">Faculty</span>
-            <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-            <span className="text-xs font-semibold text-slate-800">Subject Workspace</span>
-            <span className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              Live
-            </span>
-          </div>
-
-          {/* Logout */}
-          <motion.button
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.96 }}
-            onClick={logout}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
-          >
-            <LogOut className="h-4 w-4" />
-            Logout
-          </motion.button>
-        </div>
-      </div>
-
-      {/* ── Hero Command Center (glass card matching dashboard) ── */}
-      <div className="mx-auto max-w-[1380px] px-4 pt-8 md:px-8">
+    <div className="space-y-6">
+      {/* ── Main Workspace Body ── */}
+      <div>
+        {/* Header Hero Banner */}
         <motion.div
-          initial={{ opacity: 0, y: -14 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.22 }}
-          className="faculty-glass faculty-gradient-ring mb-8 rounded-3xl p-6 md:p-8"
+          transition={{ duration: 0.2 }}
+          className="rounded-3xl border border-slate-200/80 bg-white p-6 md:p-8 shadow-sm mb-8 relative overflow-hidden"
         >
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 p-3 shadow-md ring-1 ring-blue-300/30">
-                <BookOpen className="h-7 w-7 text-white" />
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 text-indigo-600 shrink-0">
+                <BookOpen className="h-7 w-7" />
               </div>
               <div>
-                <h1 className="bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-2xl font-bold text-transparent md:text-3xl">
-                  Subject Workspace
+                <h1 className="text-2xl font-extrabold text-slate-900 md:text-3xl">
+                  Subject Management Console
                 </h1>
-                <p className="mt-0.5 text-sm text-slate-600">
-                  Open one of your assigned subjects and continue managing students, submissions, and analytics.
+                <p className="mt-1 text-sm font-medium text-slate-500 max-w-2xl">
+                  Select an assigned laboratory subject to manage experiments, evaluate student record submissions, and set lab deadlines.
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-medium text-slate-600">
-                {subjects.length} subject{subjects.length !== 1 ? "s" : ""} assigned
-              </span>
+
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-center">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Assigned Subjects</p>
+                <p className="text-xl font-extrabold text-indigo-600">{subjects.length}</p>
+              </div>
+              {facultyProfile.department && (
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-center">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Department Scope</p>
+                  <p className="text-sm font-bold text-slate-800">{facultyProfile.department}</p>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Quick-access chips */}
-          <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-200/60 pt-4">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">Quick Access:</span>
-            <button
-              type="button"
-              onClick={() => navigate("/faculty/experiments")}
-              className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
-              title="Submissions and per-experiment due dates"
-            >
-              <Clock className="h-3.5 w-3.5" />
-              Set deadlines
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/faculty/add-experiment")}
-              className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add experiment
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/faculty/templates")}
-              className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
-            >
-              <FilePlus2 className="h-3.5 w-3.5" />
-              Templates
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/faculty/students")}
-              className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
-            >
-              <Users className="h-3.5 w-3.5" />
-              Students
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/faculty/reports")}
-              className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
-            >
-              <BarChart3 className="h-3.5 w-3.5" />
-              Analytics
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/faculty/exams")}
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
-            >
-              <ClipboardList className="h-3.5 w-3.5" />
-              Exam Console
-            </button>
-          </div>
         </motion.div>
 
-        {/* ── Subject Grid ── */}
-        {subjects.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="faculty-surface rounded-3xl py-24 text-center"
-          >
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50">
-              <BookOpen className="h-7 w-7 text-blue-400" />
+        {/* ── Global Management Actions Card Grid ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08, duration: 0.2 }}
+          className="mb-8 rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm"
+        >
+          <div className="flex items-center gap-3 mb-5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+              <Zap className="h-5 w-5" />
             </div>
-            <h3 className="mb-2 text-lg font-semibold text-slate-800">No subjects assigned</h3>
-            <p className="mx-auto max-w-sm text-sm text-slate-500">
-              Contact your administrator to get subjects assigned to your account.
-            </p>
-          </motion.div>
-        ) : (
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 pb-12">
-            {subjects.map((fs, idx) => (
-              <motion.div
-                key={fs.subject_id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.07 }}
-                whileHover={{ y: -5, scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                role="button"
-                tabIndex={0}
-                onClick={() => selectSubject(fs.subject_id, fs.subjects.name)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    selectSubject(fs.subject_id, fs.subjects.name);
-                  }
-                }}
-                className="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/70 bg-white/88 p-6 text-left shadow-[0_4px_16px_rgba(37,99,235,0.08),0_12px_28px_rgba(15,23,42,0.07)] backdrop-blur-md transition-all hover:border-blue-200 hover:shadow-[0_8px_24px_rgba(37,99,235,0.14),0_16px_36px_rgba(15,23,42,0.1)] focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2"
-              >
-                {/* Hover tint overlay */}
-                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-blue-50/60 to-indigo-50/60 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-
-                {/* Left accent rail */}
-                <div className="absolute left-0 top-4 bottom-4 w-[3px] rounded-full bg-gradient-to-b from-blue-500 to-indigo-500 opacity-0 transition-opacity group-hover:opacity-100" />
-
-                <div className="relative z-10 flex h-full flex-col">
-                  {/* Top: code badge */}
-                  {fs.subjects.code && (
-                    <span className="mb-3 inline-flex self-start rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 tracking-wide">
-                      {fs.subjects.code}
-                    </span>
-                  )}
-
-                  {/* Subject name */}
-                  <h3 className="mb-1 text-base font-bold leading-snug text-slate-900 transition-colors group-hover:text-blue-700">
-                    {fs.subjects.name}
-                  </h3>
-
-                  {/* Meta chips */}
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {fs.subjects.department && (
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                        {fs.subjects.department}
-                      </span>
-                    )}
-                    {fs.subjects.year && (
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                        Year {fs.subjects.year}
-                      </span>
-                    )}
-                    {fs.subjects.semester && (
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                        Sem {fs.subjects.semester}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openSubjectRoute(fs.subject_id, fs.subjects.name, "/faculty/experiments");
-                      }}
-                      className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 transition hover:bg-indigo-100"
-                      title="Set due dates per experiment"
-                    >
-                      Deadlines
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openSubjectRoute(fs.subject_id, fs.subjects.name, "/faculty/add-experiment");
-                      }}
-                      className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100"
-                    >
-                      Add experiment
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openSubjectRoute(fs.subject_id, fs.subjects.name, "/faculty/templates");
-                      }}
-                      className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100"
-                    >
-                      Templates
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openSubjectRoute(fs.subject_id, fs.subjects.name, "/faculty/students");
-                      }}
-                      className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-100"
-                    >
-                      Students
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openSubjectRoute(fs.subject_id, fs.subjects.name, "/faculty/reports");
-                      }}
-                      className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
-                    >
-                      Analytics
-                    </button>
-                  </div>
-
-                  {/* CTA row */}
-                  <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-blue-600 opacity-0 transition-opacity group-hover:opacity-100">
-                    Open Subject Dashboard
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </div>
-                </div>
-              </motion.div>
-            ))}
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Faculty Global Workspace Actions</h2>
+              <p className="text-xs text-slate-500">Management tools & consoles available across all your subjects</p>
+            </div>
           </div>
-        )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {/* Deadlines */}
+            <motion.button
+              type="button"
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate("/faculty/experiments")}
+              className="group flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 text-left shadow-xs transition-all hover:bg-white hover:border-indigo-300 hover:shadow-md"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                  <Clock className="h-5 w-5" />
+                </div>
+                <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 text-sm block">Lab Deadlines</span>
+                <span className="text-xs text-slate-500 line-clamp-1 mt-0.5">Set due dates & submission rules</span>
+              </div>
+            </motion.button>
+
+            {/* Add Experiment */}
+            <motion.button
+              type="button"
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate("/faculty/add-experiment")}
+              className="group flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 text-left shadow-xs transition-all hover:bg-white hover:border-blue-300 hover:shadow-md"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <Plus className="h-5 w-5" />
+                </div>
+                <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 text-sm block">Add New Experiment</span>
+                <span className="text-xs text-slate-500 line-clamp-1 mt-0.5">Publish new lab practical tasks</span>
+              </div>
+            </motion.button>
+
+            {/* Exam Console */}
+            <motion.button
+              type="button"
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate("/faculty/exams")}
+              className="group flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 text-left shadow-xs transition-all hover:bg-white hover:border-amber-300 hover:shadow-md"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                  <ClipboardList className="h-5 w-5" />
+                </div>
+                <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-amber-600 transition-colors" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 text-sm block">Exam Console</span>
+                <span className="text-xs text-slate-500 line-clamp-1 mt-0.5">Conduct & monitor online lab exams</span>
+              </div>
+            </motion.button>
+
+            {/* Templates */}
+            <motion.button
+              type="button"
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate("/faculty/templates")}
+              className="group flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 text-left shadow-xs transition-all hover:bg-white hover:border-violet-300 hover:shadow-md"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600 group-hover:bg-violet-600 group-hover:text-white transition-colors">
+                  <FilePlus2 className="h-5 w-5" />
+                </div>
+                <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-violet-600 transition-colors" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 text-sm block">Code Templates</span>
+                <span className="text-xs text-slate-500 line-clamp-1 mt-0.5">Starter code & record templates</span>
+              </div>
+            </motion.button>
+
+            {/* Students Roster */}
+            <motion.button
+              type="button"
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate("/faculty/students")}
+              className="group flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 text-left shadow-xs transition-all hover:bg-white hover:border-sky-300 hover:shadow-md"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-sky-600 group-hover:bg-sky-600 group-hover:text-white transition-colors">
+                  <Users className="h-5 w-5" />
+                </div>
+                <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-sky-600 transition-colors" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 text-sm block">Students Roster</span>
+                <span className="text-xs text-slate-500 line-clamp-1 mt-0.5">Enrolled student profiles & attendance</span>
+              </div>
+            </motion.button>
+
+            {/* Analytics */}
+            <motion.button
+              type="button"
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate("/faculty/reports")}
+              className="group flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 text-left shadow-xs transition-all hover:bg-white hover:border-emerald-300 hover:shadow-md"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                  <BarChart3 className="h-5 w-5" />
+                </div>
+                <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-emerald-600 transition-colors" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 text-sm block">Analytics & Reports</span>
+                <span className="text-xs text-slate-500 line-clamp-1 mt-0.5">Class performance & grade reports</span>
+              </div>
+            </motion.button>
+          </div>
+        </motion.div>
       </div>
     </div>
   );

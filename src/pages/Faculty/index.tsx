@@ -20,6 +20,7 @@ import Experiments from "./Experiments";
 import AddExperiment from "./AddExperiment";
 import FacultyNotifications from "./FacultyNotifications";
 import FacultyLeaderboard from "./FacultyLeaderboard";
+import FacultyInternalMarks from "./FacultyInternalMarks";
 
 function RedirectToSubmission() {
   const { id } = useParams();
@@ -72,11 +73,9 @@ export default function Faculty() {
   return (
     <FacultyErrorBoundary>
       <Routes>
-        {/* Subject selector — outside layout so it renders without the sidebar */}
-        <Route path="subjects" element={<FacultySubjectSelect />} />
-
         <Route element={<FacultyLayout />}>
           <Route index element={<FacultyDashboard />} />
+          <Route path="subjects" element={<FacultySubjectSelect />} />
           <Route path="templates" element={<Templates />} />
           <Route path="pending" element={<PendingList />} />
           <Route path="submission/:id" element={<FacultySubmissionDetail />} />
@@ -94,6 +93,7 @@ export default function Faculty() {
           <Route path="exam-activity/:examId" element={<FacultyExamActivity />} />
           <Route path="settings" element={<FacultySettings />} />
           <Route path="leaderboard" element={<FacultyLeaderboard />} />
+          <Route path="internal-marks" element={<FacultyInternalMarks />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/faculty" replace />} />

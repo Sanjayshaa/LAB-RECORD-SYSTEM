@@ -43,3 +43,16 @@ CREATE INDEX IF NOT EXISTS idx_student_quest_completions_student
 COMMENT ON TABLE public.student_gamification_tasks IS 'Quest-style tasks; individual or global overall quests applicable to all students.';
 COMMENT ON TABLE public.student_quest_completions IS 'Tracks student completion records for overall global quests.';
 
+-- Migration / update to support performing & submitted status
+ALTER TABLE public.student_gamification_tasks DROP CONSTRAINT IF EXISTS student_gamification_tasks_status_check;
+ALTER TABLE public.student_gamification_tasks ADD CONSTRAINT student_gamification_tasks_status_check CHECK (status IN ('pending', 'performing', 'submitted', 'completed', 'cancelled'));
+
+ALTER TABLE public.student_quest_completions ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'completed';
+ALTER TABLE public.student_quest_completions DROP CONSTRAINT IF EXISTS student_quest_completions_status_check;
+ALTER TABLE public.student_quest_completions ADD CONSTRAINT student_quest_completions_status_check CHECK (status IN ('performing', 'submitted', 'completed'));
+
+ALTER TABLE public.student_gamification_tasks ADD COLUMN IF NOT EXISTS submission_notes text;
+ALTER TABLE public.student_quest_completions ADD COLUMN IF NOT EXISTS submission_notes text;
+
+
+

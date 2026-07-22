@@ -177,6 +177,42 @@ function submissionStatusCountsAsComplete(status) {
   return s === "submitted" || s === "evaluated" || s === "approved";
 }
 
+async function countQuestXp(userId) {
+  const supabase = getServiceClient();
+  const sid = String(userId || "").trim();
+  if (!sid) return 0;
+
+  // 1. Direct tasks completed
+  const { data: directTasks } = await supabase
+    .from(TASKS_TABLE)
+    .select("xp_reward")
+    .eq("student_id", sid)
+    .eq("status", "completed");
+
+  const directXp = (directTasks || []).reduce((sum, t) => sum + normalizeNonNegativeInteger(t.xp_reward, 0), 0);
+
+  // 2. Global tasks completed
+  let globalXp = 0;
+  if (await canQueryTable(supabase, "student_quest_completions")) {
+    const { data: completions } = await supabase
+      .from("student_quest_completions")
+      .select("task_id")
+      .eq("student_id", sid)
+      .eq("status", "completed");
+
+    const globalTaskIds = (completions || []).map((c) => String(c.task_id)).filter(Boolean);
+    if (globalTaskIds.length > 0) {
+      const { data: globalTasks } = await supabase
+        .from(TASKS_TABLE)
+        .select("xp_reward")
+        .in("id", globalTaskIds);
+      globalXp = (globalTasks || []).reduce((sum, t) => sum + normalizeNonNegativeInteger(t.xp_reward, 0), 0);
+    }
+  }
+
+  return directXp + globalXp;
+}
+
 /**
  * Reconcile profiles.xp_points / labs_completed / level from real activity so the
  * leaderboard matches completed work (not only reward-submission events).
@@ -227,13 +263,27 @@ async function syncStudentProgressFromSubmissions(userId) {
       });
     }
 
-    const labsCount = completedExpIds.size;
-    const derivedXp = labsCount * LAB_COMPLETION_XP_REWARD;
+    if (await canQueryTable(supabase, "full_student_data")) {
+      const { data: fullRows } = await supabase
+        .from("full_student_data")
+        .select("experiment_no, title, status")
+        .eq("student_id", userId);
 
-    const progress = await getUserProgress(userId);
-    const nextLabs = Math.max(progress.labs_completed, labsCount);
-    const nextXp = Math.max(progress.xp_points, derivedXp);
+      (fullRows || []).forEach((row) => {
+        const key = String(row.experiment_no || row.title || "").trim();
+        if (!key) return;
+        if (submissionStatusCountsAsComplete(row.status)) {
+          completedExpIds.add(key);
+        }
+      });
+    }
+
+    const labsCount = completedExpIds.size;
+    const labXp = labsCount * LAB_COMPLETION_XP_REWARD;
+    const questXp = await countQuestXp(userId);
+    const nextXp = labXp + questXp;
     const nextLevel = computeLevel(nextXp);
+    const nextLabs = labsCount;
 
     const { error: updateError } = await supabase
       .from(tableName)
@@ -250,7 +300,7 @@ async function syncStudentProgressFromSubmissions(userId) {
         xp_points: nextXp,
         level: nextLevel,
         labs_completed: nextLabs,
-        current_streak: progress.current_streak,
+        current_streak: 0,
       });
     }
 
@@ -773,7 +823,7 @@ async function createStudentTask(payload) {
   return data;
 }
 
-async function completeStudentTask(taskId, studentId) {
+async function performStudentTask(taskId, studentId) {
   const supabase = getServiceClient();
   const id = String(taskId || "").trim();
   const sid = String(studentId || "").trim();
@@ -797,21 +847,25 @@ async function completeStudentTask(taskId, studentId) {
     if (await canQueryTable(supabase, "student_quest_completions")) {
       const { data: existing } = await supabase
         .from("student_quest_completions")
-        .select("id")
+        .select("id, status")
         .eq("task_id", id)
         .eq("student_id", sid)
         .maybeSingle();
 
       if (existing) {
-        return { ok: false, error: "You have already completed this quest" };
+        if (existing.status === "completed") {
+          return { ok: false, error: "You have already completed this quest" };
+        }
+        return { ok: true, message: "Quest is already in progress" };
       }
 
-      const { error: compError } = await supabase
+      const { error: insertError } = await supabase
         .from("student_quest_completions")
-        .insert({ task_id: id, student_id: sid });
+        .insert({ task_id: id, student_id: sid, status: "performing" });
 
-      if (compError) {
-        console.error("Global task completion record error:", compError.message);
+      if (insertError) {
+        console.error("Global task performance insert error:", insertError.message);
+        return { ok: false, error: insertError.message };
       }
     }
   } else {
@@ -819,8 +873,180 @@ async function completeStudentTask(taskId, studentId) {
       return { ok: false, error: "This task is not assigned to you" };
     }
 
-    if (String(task.status || "").toLowerCase() !== "pending") {
-      return { ok: false, error: "Task is not pending" };
+    const currentStatus = String(task.status || "").toLowerCase();
+    if (currentStatus === "completed") {
+      return { ok: false, error: "Task is already completed" };
+    }
+    if (currentStatus === "performing") {
+      return { ok: true, message: "Quest is already in progress" };
+    }
+
+    const { error: updateError } = await supabase
+      .from(TASKS_TABLE)
+      .update({
+        status: "performing",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("student_id", sid);
+
+    if (updateError) {
+      console.error("performStudentTask update error:", updateError.message);
+      return { ok: false, error: updateError.message };
+    }
+  }
+
+  return { ok: true };
+}
+
+async function submitStudentTask(taskId, studentId, submissionNotes = null) {
+  const supabase = getServiceClient();
+  const id = String(taskId || "").trim();
+  const sid = String(studentId || "").trim();
+  const notes = submissionNotes ? String(submissionNotes).trim() : null;
+  if (!id || !sid) {
+    return { ok: false, error: "Missing task or user" };
+  }
+
+  const { data: task, error: fetchError } = await supabase
+    .from(TASKS_TABLE)
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (fetchError || !task) {
+    return { ok: false, error: "Task not found" };
+  }
+
+  const isGlobalTask = Boolean(task.is_global) || !task.student_id;
+
+  if (isGlobalTask) {
+    if (await canQueryTable(supabase, "student_quest_completions")) {
+      const { data: existing } = await supabase
+        .from("student_quest_completions")
+        .select("id, status")
+        .eq("task_id", id)
+        .eq("student_id", sid)
+        .maybeSingle();
+
+      if (existing) {
+        if (existing.status === "completed" || existing.status === "submitted") {
+          return { ok: false, error: "You have already submitted this quest" };
+        }
+        
+        // Update from performing to submitted
+        const { error: updateError } = await supabase
+          .from("student_quest_completions")
+          .update({
+            status: "submitted",
+            completed_at: new Date().toISOString(),
+            submission_notes: notes,
+          })
+          .eq("id", existing.id);
+
+        if (updateError) {
+          console.error("Global task submission update error:", updateError.message);
+          return { ok: false, error: updateError.message };
+        }
+      } else {
+        // Direct submit
+        const { error: compError } = await supabase
+          .from("student_quest_completions")
+          .insert({
+            task_id: id,
+            student_id: sid,
+            status: "submitted",
+            submission_notes: notes,
+          });
+
+        if (compError) {
+          console.error("Global task submission record error:", compError.message);
+          return { ok: false, error: compError.message };
+        }
+      }
+    }
+  } else {
+    if (String(task.student_id) !== sid) {
+      return { ok: false, error: "This task is not assigned to you" };
+    }
+
+    const currentStatus = String(task.status || "").toLowerCase();
+    if (currentStatus === "completed" || currentStatus === "submitted") {
+      return { ok: false, error: "Task is already submitted/completed" };
+    }
+    if (currentStatus !== "pending" && currentStatus !== "performing") {
+      return { ok: false, error: "Task cannot be submitted from current state" };
+    }
+
+    const { error: updateError } = await supabase
+      .from(TASKS_TABLE)
+      .update({
+        status: "submitted",
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        submission_notes: notes,
+      })
+      .eq("id", id)
+      .eq("student_id", sid);
+
+    if (updateError) {
+      console.error("submitStudentTask update error:", updateError.message);
+      return { ok: false, error: updateError.message };
+    }
+  }
+
+  return { ok: true };
+}
+
+async function verifyStudentTask(taskId, studentId) {
+  const supabase = getServiceClient();
+  const id = String(taskId || "").trim();
+  const sid = String(studentId || "").trim();
+  if (!id || !sid) {
+    return { ok: false, error: "Missing task or student" };
+  }
+
+  const { data: task, error: fetchError } = await supabase
+    .from(TASKS_TABLE)
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (fetchError || !task) {
+    return { ok: false, error: "Task not found" };
+  }
+
+  const isGlobalTask = Boolean(task.is_global) || !task.student_id;
+
+  if (isGlobalTask) {
+    if (await canQueryTable(supabase, "student_quest_completions")) {
+      const { data: existing } = await supabase
+        .from("student_quest_completions")
+        .select("id, status")
+        .eq("task_id", id)
+        .eq("student_id", sid)
+        .maybeSingle();
+
+      if (!existing || existing.status !== "submitted") {
+        return { ok: false, error: "No pending submission found to verify" };
+      }
+
+      const { error: updateError } = await supabase
+        .from("student_quest_completions")
+        .update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", existing.id);
+
+      if (updateError) {
+        console.error("Global task verification update error:", updateError.message);
+        return { ok: false, error: updateError.message };
+      }
+    }
+  } else {
+    if (String(task.status || "").toLowerCase() !== "submitted") {
+      return { ok: false, error: "Quest is not in submitted state" };
     }
 
     const { error: updateError } = await supabase
@@ -830,11 +1056,10 @@ async function completeStudentTask(taskId, studentId) {
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id)
-      .eq("student_id", sid);
+      .eq("id", id);
 
     if (updateError) {
-      console.error("completeStudentTask update error:", updateError.message);
+      console.error("verifyStudentTask update error:", updateError.message);
       return { ok: false, error: updateError.message };
     }
   }
@@ -870,29 +1095,38 @@ async function listTasksForStudent(studentId, options = {}) {
   const directList = directTasks || [];
   const globalList = globalTasks || [];
 
-  const completedGlobalTaskIds = new Set();
+  const globalTaskStatusMap = new Map();
   if (globalList.length > 0 && (await canQueryTable(supabase, "student_quest_completions"))) {
     const { data: compRows } = await supabase
       .from("student_quest_completions")
-      .select("task_id")
+      .select("task_id, status, submission_notes")
       .eq("student_id", sid);
 
-    (compRows || []).forEach((r) => completedGlobalTaskIds.add(String(r.task_id)));
+    (compRows || []).forEach((r) => {
+      globalTaskStatusMap.set(String(r.task_id), {
+        status: r.status || "completed",
+        submission_notes: r.submission_notes || null,
+      });
+    });
   }
 
   const mappedGlobal = globalList.map((t) => {
-    const isDone = completedGlobalTaskIds.has(String(t.id));
+    const record = globalTaskStatusMap.get(String(t.id));
+    const status = record?.status || "pending";
+    const submission_notes = record?.submission_notes || null;
     return {
       ...t,
-      status: isDone ? "completed" : "pending",
+      status,
+      submission_notes,
       is_global: true,
     };
   });
 
   const merged = [...directList, ...mappedGlobal];
 
-  if (statusFilter === "pending") return merged.filter((t) => t.status === "pending");
-  if (statusFilter === "completed") return merged.filter((t) => t.status === "completed");
+  if (statusFilter) {
+    return merged.filter((t) => t.status === statusFilter);
+  }
 
   return merged;
 }
@@ -973,6 +1207,41 @@ async function listAllTasksForAdmin(options = {}) {
   return enrichTasksWithProfileNames(tasks);
 }
 
+async function getGlobalTaskCompletions(taskId) {
+  const supabase = getServiceClient();
+  const id = String(taskId || "").trim();
+  if (!id) return [];
+
+  const { data, error } = await supabase
+    .from("student_quest_completions")
+    .select("student_id, completed_at, status, submission_notes")
+    .eq("task_id", id);
+
+  if (error || !data) {
+    console.error("getGlobalTaskCompletions error:", error?.message);
+    return [];
+  }
+
+  const studentIds = data.map((d) => String(d.student_id)).filter(Boolean);
+  let profileMap = new Map();
+  if (studentIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, name, register_no")
+      .in("id", studentIds);
+    profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+  }
+
+  return data.map((d) => ({
+    student_id: d.student_id,
+    student_name: profileMap.get(d.student_id)?.name || "Student",
+    register_no: profileMap.get(d.student_id)?.register_no || "-",
+    completed_at: d.completed_at,
+    status: d.status,
+    submission_notes: d.submission_notes,
+  }));
+}
+
 module.exports = {
   getUserProgress,
   addXP,
@@ -985,10 +1254,13 @@ module.exports = {
   checkAndGrantAchievements,
   rewardSubmission,
   createStudentTask,
-  completeStudentTask,
+  submitStudentTask,
+  verifyStudentTask,
+  performStudentTask,
   listTasksForStudent,
   listTasksCreatedBy,
   listAllTasksForAdmin,
+  getGlobalTaskCompletions,
   LEVEL_DIVISOR,
   LAB_COMPLETION_XP_REWARD,
   FACULTY_REVIEW_XP_REWARD,

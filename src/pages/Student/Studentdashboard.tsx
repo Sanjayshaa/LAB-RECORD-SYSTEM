@@ -37,6 +37,7 @@ import StudentQuestPanel from "@/components/gamification/StudentQuestPanel";
 import {
   getUserProgress,
   mergeProgressWithExperimentActivity,
+  trySyncStudentProgress,
 } from "@/services/studentGamificationService";
 import { formatDateTime } from "@/utils/dateFormat";
 import { getStatusConfig } from "@/utils/statusConfig";
@@ -225,22 +226,32 @@ export default function StudentDashboard() {
           pending,
           draft,
         });
+        const submittedOrUpdatedExps = [...experiments]
+          .filter((exp) => exp.updatedAt || exp.status === "submitted" || exp.status === "evaluated" || exp.status === "approved" || exp.isCompleted)
+          .sort((a, b) => {
+            const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return timeB - timeA;
+          });
+
         setRecentSubmissions(
-          experiments.slice(0, 5).map((exp) => ({
-            id: exp.id,
-            status: exp.status,
-            marks: exp.marks,
-            updated_at: exp.updatedAt,
-            experiments: {
-              experiment_no: String(exp.experimentNo),
-              title: exp.title,
-            },
-          }))
+          (submittedOrUpdatedExps.length > 0 ? submittedOrUpdatedExps : experiments)
+            .slice(0, 5)
+            .map((exp) => ({
+              id: exp.id,
+              status: exp.status,
+              marks: exp.marks,
+              updated_at: exp.updatedAt,
+              experiments: {
+                experiment_no: String(exp.experimentNo),
+                title: exp.title,
+              },
+            }))
         );
         setAllSubmissions(
           experiments
-            .filter((exp) => exp.updatedAt)
-            .map((exp) => ({ updated_at: exp.updatedAt }))
+            .filter((exp) => exp.updatedAt || exp.isCompleted || exp.status === "submitted" || exp.status === "evaluated")
+            .map((exp) => ({ updated_at: exp.updatedAt || new Date().toISOString() }))
         );
         const percent = total ? Math.round((completed / total) * 100) : 0;
         setCurrentProgress(percent);
@@ -250,6 +261,12 @@ export default function StudentDashboard() {
             progressPercentage: percent,
           },
         ]);
+
+        try {
+          await trySyncStudentProgress(data.session.user.id);
+        } catch (e) {
+          console.warn("Failed to sync progress:", e);
+        }
 
         try {
           const progress = await getUserProgress(data.session.user.id);
@@ -564,67 +581,99 @@ export default function StudentDashboard() {
           )}
         </motion.div>
 
-        {/* Quick Links */}
+        {/* Purposeful Quick Links */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.12, duration: 0.2, ease: "easeOut" }}
+          transition={{ delay: 0.12, duration: 0.2, ease: "easeOut" }}
           className="faculty-surface rounded-2xl p-6"
         >
           <div className="flex items-center gap-3 mb-6">
-            <div className="rounded-lg bg-indigo-50 p-2">
-              <Sparkles className="h-5 w-5 text-indigo-600" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+              <Zap className="h-5 w-5" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-900">Quick Links</h3>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Quick Workspace Links</h3>
+              <p className="text-xs text-slate-500">Fast access to your core lab tools</p>
+            </div>
           </div>
-          <ul className="space-y-2">
-            <motion.li
-              whileHover={{ x: 4 }}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <motion.button
+              type="button"
+              whileHover={{ y: -2 }}
               whileTap={{ scale: 0.98 }}
+              onClick={() => navigateToExperiments()}
+              className="group flex flex-col justify-between rounded-xl border border-slate-200/80 bg-white p-4 text-left shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
             >
-              <button
-                type="button"
-                onClick={() => navigateToExperiments()}
-                className="group flex w-full items-center gap-3 rounded-lg border border-slate-200 p-3 text-sm text-slate-700 transition-all hover:border-blue-200 hover:bg-blue-50/60"
-              >
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50">
-                  <FlaskConical className="h-4 w-4 text-blue-600" />
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <FlaskConical className="h-5 w-5" />
                 </div>
-                <span className="flex-1 text-left">Experiments</span>
-                <ExternalLink className="h-3.5 w-3.5 text-slate-500 transition-colors group-hover:text-blue-600" />
-              </button>
-            </motion.li>
-            <motion.li
-              whileHover={{ x: 4 }}
+                <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 text-sm block">Lab Experiments</span>
+                <span className="text-xs text-slate-500 line-clamp-1 mt-0.5">Start coding & perform practicals</span>
+              </div>
+            </motion.button>
+
+            <motion.button
+              type="button"
+              whileHover={{ y: -2 }}
               whileTap={{ scale: 0.98 }}
+              onClick={() => navigate("/student/submissions")}
+              className="group flex flex-col justify-between rounded-xl border border-slate-200/80 bg-white p-4 text-left shadow-sm transition-all hover:border-indigo-300 hover:shadow-md"
             >
-              <button 
-                onClick={() => navigate("/student/profile")}
-                className="group flex w-full items-center gap-3 rounded-lg border border-slate-200 p-3 text-sm text-slate-700 transition-all hover:border-blue-200 hover:bg-blue-50/60"
-              >
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50">
-                  <User className="h-4 w-4 text-blue-600" />
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                  <FileText className="h-5 w-5" />
                 </div>
-                <span className="flex-1 text-left">Update Profile</span>
-                <ExternalLink className="h-3.5 w-3.5 text-slate-500 transition-colors group-hover:text-blue-600" />
-              </button>
-            </motion.li>
-            <motion.li
-              whileHover={{ x: 4 }}
+                <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 text-sm block">My Submissions</span>
+                <span className="text-xs text-slate-500 line-clamp-1 mt-0.5">Review status & faculty reviews</span>
+              </div>
+            </motion.button>
+
+            <motion.button
+              type="button"
+              whileHover={{ y: -2 }}
               whileTap={{ scale: 0.98 }}
+              onClick={() => navigate("/student/marks")}
+              className="group flex flex-col justify-between rounded-xl border border-slate-200/80 bg-white p-4 text-left shadow-sm transition-all hover:border-emerald-300 hover:shadow-md"
             >
-              <button 
-                onClick={() => logout()}
-                className="group flex w-full min-h-[44px] items-center gap-3 rounded-lg border border-amber-200 p-3 text-sm text-slate-700 transition-all hover:bg-amber-50"
-              >
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-amber-50">
-                  <LogOut className="h-4 w-4 text-amber-600" />
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                  <GraduationCap className="h-5 w-5" />
                 </div>
-                <span className="flex-1 text-left">Logout</span>
-                <ExternalLink className="h-3.5 w-3.5 text-slate-500 transition-colors group-hover:text-amber-600" />
-              </button>
-            </motion.li>
-          </ul>
+                <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-emerald-600 transition-colors" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 text-sm block">Marks & Grades</span>
+                <span className="text-xs text-slate-500 line-clamp-1 mt-0.5">Internal marks breakdown</span>
+              </div>
+            </motion.button>
+
+            <motion.button
+              type="button"
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate("/student/profile")}
+              className="group flex flex-col justify-between rounded-xl border border-slate-200/80 bg-white p-4 text-left shadow-sm transition-all hover:border-amber-300 hover:shadow-md"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                  <User className="h-5 w-5" />
+                </div>
+                <ExternalLink className="h-4 w-4 text-slate-400 group-hover:text-amber-600 transition-colors" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 text-sm block">Profile & Settings</span>
+                <span className="text-xs text-slate-500 line-clamp-1 mt-0.5">Account & personal details</span>
+              </div>
+            </motion.button>
+          </div>
         </motion.div>
       </div>
 

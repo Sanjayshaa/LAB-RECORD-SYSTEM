@@ -32,13 +32,25 @@ export function clearAllUserScope() {
 }
 
 export function isInvalidRefreshTokenError(error: unknown): boolean {
+  if (!error) return false;
   const blob = JSON.stringify(error || {}).toLowerCase();
   const message = (error as { message?: string } | null)?.message?.toLowerCase() || "";
   const combined = `${blob} ${message}`;
+
+  // Ignore network failures or transient tab wake issues
+  if (
+    combined.includes("failed to fetch") ||
+    combined.includes("network") ||
+    combined.includes("timeout") ||
+    combined.includes("abort")
+  ) {
+    return false;
+  }
+
   return (
     combined.includes("invalid refresh token") ||
-    combined.includes("refresh token not found") ||
-    combined.includes("authapierror")
+    combined.includes("refresh_token_not_found") ||
+    combined.includes("refresh token not found")
   );
 }
 

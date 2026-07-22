@@ -224,6 +224,8 @@ export default function StudentSubmissions() {
         studentName: unified.profile.studentName || profileName || "Student",
         registerNo: unified.profile.registerNo || profileRegNo || "N/A",
         yearSemester: unified.profile.yearSemester,
+        branch: unified.profile.department || "INFORMATION TECHNOLOGY",
+        departmentName: `DEPARTMENT OF ${String(unified.profile.department || "INFORMATION TECHNOLOGY").toUpperCase()}`,
         data: unified,
       });
     } catch (error) {

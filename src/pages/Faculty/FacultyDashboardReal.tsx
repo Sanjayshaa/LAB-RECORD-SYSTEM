@@ -14,7 +14,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import { BarChart3, ClipboardCheck, Clock, FileText, Plus, Users } from "lucide-react";
+import { BarChart3, ClipboardCheck, Clock, FileText, Plus, Users, Trophy, TrendingUp, Sparkles, Award } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { getFacultyInboxNotifications } from "@/services/studentNotificationsService";
 import {
@@ -684,9 +684,19 @@ export default function FacultyDashboardReal() {
         <Card icon={<BarChart3 className="h-5 w-5 text-emerald-600" />} label="Evaluated" value={stats.evaluated} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <motion.div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-2 text-sm font-semibold text-slate-900">Status Distribution</h3>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        {/* Status Distribution Redesigned Card */}
+        <div className="rounded-2xl border border-slate-200/60 bg-white/80 backdrop-blur-md p-5 shadow-sm hover:shadow-md transition-all duration-300">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">Status Distribution</h3>
+              <p className="text-[11px] text-slate-500">Overview of lab report submission states</p>
+            </div>
+            <span className="rounded-full bg-indigo-50/80 px-2.5 py-0.5 text-[10px] font-semibold text-indigo-700 border border-indigo-100/30">
+              Live Stats
+            </span>
+          </div>
+
           {statusData.length === 0 ? (
             <div className="flex h-64 min-h-[220px] min-w-0 items-center justify-center text-sm text-slate-500">
               No status records available.
@@ -694,63 +704,106 @@ export default function FacultyDashboardReal() {
           ) : (
             <div className="h-64 min-h-[220px] min-w-0">
               <ResponsiveContainer width="100%" height="100%" minWidth={260} minHeight={220}>
-                <BarChart data={statusData} margin={{ top: 12, right: 8, left: 0, bottom: 6 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#2563EB" radius={[8, 8, 0, 0]} minPointSize={4} barSize={40}>
-                    <LabelList dataKey="count" position="top" />
+                <BarChart data={statusData} margin={{ top: 20, right: 8, left: -25, bottom: 6 }}>
+                  <defs>
+                    <linearGradient id="statusBarGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#4F46E5" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="#3B82F6" stopOpacity={0.9} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0/50" />
+                  <XAxis 
+                    dataKey="label" 
+                    tickLine={false} 
+                    axisLine={false} 
+                    tick={{ fill: '#64748B', fontSize: 10, fontWeight: 500 }}
+                  />
+                  <YAxis 
+                    allowDecimals={false} 
+                    tickLine={false} 
+                    axisLine={false} 
+                    tick={{ fill: '#64748B', fontSize: 10 }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                      borderRadius: '8px',
+                      border: '1px solid #E2E8F0',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+                    }}
+                  />
+                  <Bar dataKey="count" fill="url(#statusBarGrad)" radius={[4, 4, 0, 0]} minPointSize={4} barSize={36}>
+                    <LabelList dataKey="count" position="top" fill="#4F46E5" fontSize={11} fontWeight="bold" offset={6} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
-        </motion.div>
+        </div>
 
-        <motion.div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-2 text-sm font-semibold text-slate-900">Top Students</h3>
+        {/* Top Students Leaderboard Redesigned Card */}
+        <div className="rounded-2xl border border-slate-200/60 bg-white/80 backdrop-blur-md p-5 shadow-sm hover:shadow-md transition-all duration-300">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">Top Students</h3>
+              <p className="text-[11px] text-slate-500">Highest scores in active experiments</p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">
+              Leaderboard
+            </span>
+          </div>
+
           {topStudents.length === 0 ? (
             <p className="text-sm text-slate-500">No submissions found</p>
           ) : (
-            <div className="h-64 min-h-[220px] min-w-0">
-              <ResponsiveContainer width="100%" height="100%" minWidth={260} minHeight={220}>
-                <BarChart
-                  data={topStudents}
-                  layout="vertical"
-                  margin={{ top: 8, right: 30, left: 8, bottom: 8 }}
-                  barCategoryGap={16}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" allowDecimals={false} />
-                  <YAxis
-                    type="category"
-                    dataKey="display_name"
-                    width={130}
-                    tickLine={false}
-                    tickFormatter={(value) => {
-                      const text = String(value ?? "");
-                      return text.length > 14 ? `${text.slice(0, 13)}…` : text;
-                    }}
-                  />
-                  <Tooltip
-                    formatter={(value: unknown) => [Number(value || 0), "Marks"]}
-                    labelFormatter={(label) => `Student: ${label}`}
-                  />
-                  <Bar dataKey="total_marks" radius={[0, 8, 8, 0]} fill="#2563EB" minPointSize={8}>
-                    <LabelList dataKey="total_marks" position="right" />
-                    {topStudents.map((_, i) => (
-                      <Cell
-                        key={`top-${i}`}
-                        fill={["#2563EB", "#4F46E5", "#059669", "#F59E0B", "#0EA5E9"][i % 5]}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="space-y-3 h-[256px] overflow-y-auto pr-1">
+              {topStudents.slice(0, 5).map((student, index) => {
+                const maxMarks = Math.max(...topStudents.map((s) => s.total_marks || 100), 100);
+                const pct = Math.min(100, Math.max(5, ((student.total_marks || 0) / maxMarks) * 100));
+
+                const rankTextStyles = [
+                  "text-blue-600 font-extrabold text-base",
+                  "text-indigo-600 font-bold text-sm",
+                  "text-purple-600 font-bold text-sm",
+                  "text-slate-400 font-semibold text-sm",
+                  "text-slate-400 font-semibold text-sm",
+                ];
+
+                return (
+                  <div
+                    key={student.student_id || index}
+                    className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white/40 p-2.5 transition hover:bg-white/80 hover:shadow-sm"
+                  >
+                    {/* Rank Number */}
+                    <div className={`w-6 shrink-0 text-center ${rankTextStyles[index] || "text-slate-400"}`}>
+                      {index + 1}
+                    </div>
+
+                    {/* Student Detail & Progress */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-slate-800 truncate">
+                          {student.display_name}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-700 bg-slate-50 border border-slate-200/50 px-2 py-0.5 rounded">
+                          {student.total_marks} Marks
+                        </span>
+                      </div>
+
+                      {/* Cohesive Gradient Progress Bar */}
+                      <div className="mt-2 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-600"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
-        </motion.div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">

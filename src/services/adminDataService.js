@@ -549,9 +549,16 @@ export async function getStudentsPageData(department) {
   safeRows.forEach((row) => {
     const studentId = String(valueFromRow(row, ["student_id", "id"], ""));
     if (!studentId) return;
+    // Prefer student_name (set by student at submission time) over generic profile 'name'
+    // which can be a faculty/admin name if the view join is wrong.
+    const resolvedName =
+      String(valueFromRow(row, ["student_name"], "")).trim() ||
+      String(valueFromRow(row, ["full_name"], "")).trim() ||
+      String(valueFromRow(row, ["name"], "")).trim() ||
+      "Student";
     const prev = grouped.get(studentId) || {
       id: studentId,
-      name: String(valueFromRow(row, ["full_name", "name", "student_name"], "Student")),
+      name: isFacultyLikeName(resolvedName) ? "Student" : resolvedName,
       email: String(valueFromRow(row, ["email"], "")),
       register_no: String(valueFromRow(row, ["register_no"], "-")),
       registerNo: String(valueFromRow(row, ["register_no"], "-")),
@@ -571,6 +578,40 @@ export async function getStudentsPageData(department) {
     prev._marks += toNumber(valueFromRow(row, ["final_marks", "faculty_marks", "ai_marks", "marks"], 0));
     grouped.set(studentId, prev);
   });
+
+  // Cross-enrich names from profiles table so leaderboard shows the real profile name
+  // (the authoritative source) rather than whatever was written into student_name at submission.
+  if (grouped.size > 0) {
+    const ids = Array.from(grouped.keys()).filter(Boolean);
+    // Chunk to stay under Supabase in-filter limits
+    const CHUNK = 200;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("id, name, register_no")
+        .in("id", chunk);
+      if (Array.isArray(profs)) {
+        profs.forEach((p) => {
+          const uid = String(p.id || "");
+          const row = grouped.get(uid);
+          if (!row) return;
+          const profileName = String(p.name || "").trim();
+          const profileReg = String(p.register_no || "").trim();
+          // Only override if profile name is not a faculty-like name
+          if (profileName && !isFacultyLikeName(profileName)) {
+            row.name = profileName;
+          }
+          // Fill register_no from profile if missing
+          if (profileReg && isUsableRegisterNo(profileReg) && !isUsableRegisterNo(row.register_no)) {
+            row.register_no = profileReg;
+            row.registerNo = profileReg;
+          }
+          grouped.set(uid, row);
+        });
+      }
+    }
+  }
 
   if (grouped.size === 0 && department) {
     let profQuery = supabase

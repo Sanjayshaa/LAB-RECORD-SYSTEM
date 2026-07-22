@@ -17,6 +17,7 @@ import {
   Search,
   LogOut,
   Trophy,
+  ClipboardList,
 } from "lucide-react";
 import CommandPalette from "@/components/admin/CommandPalette";
 import BackButton from "@/components/BackButton";
@@ -31,6 +32,7 @@ const MENU = [
   { label: "Leaderboard", to: "/admin/leaderboard", icon: Trophy },
   { label: "Subjects", to: "/admin/subjects", icon: BookOpen },
   { label: "Reports", to: "/admin/submissions", icon: FileText },
+  { label: "Internal Marks", to: "/admin/internal-marks", icon: ClipboardList },
   { label: "Message", to: "/admin/notifications", icon: MessageSquare },
   { label: "Settings", to: "/admin/settings", icon: Settings },
 ];

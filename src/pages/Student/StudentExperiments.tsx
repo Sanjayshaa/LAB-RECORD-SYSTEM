@@ -15,6 +15,7 @@ import { motion } from "framer-motion";
 import { ExperimentsSkeleton } from "@/components/ui/StudentSkeletons";
 import EmptyState from "@/components/ui/EmptyState";
 import ErrorScreen from "@/components/ui/ErrorScreen";
+import { ArrowLeft } from "lucide-react";
 
 const STUDENT_DATA_UPDATED_EVENT = "student-data-updated";
 type ExperimentRow = {
@@ -268,14 +269,21 @@ export default function StudentExperiments() {
   return (
     <div className="student-page-enter faculty-bg-vibrant min-h-screen px-4 py-6 md:px-8 md:py-8">
       <div className="mx-auto max-w-[1280px]">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
+        <div className="mb-6 flex items-start gap-4">
+          <button
+            onClick={() => navigate(-1)}
+            className="mt-1 flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-sm transition-colors cursor-pointer shrink-0"
+            title="Go Back"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div className="flex-1">
             <h1 className="text-2xl font-semibold text-slate-900">Student Experiments</h1>
             <p className="mt-1 text-xs text-slate-500">
               Use this page to start or continue experiments. Submission review and mark history are in Submissions.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0 self-center">
             <button
               type="button"
               onClick={() => void fetchData()}

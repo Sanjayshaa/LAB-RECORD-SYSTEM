@@ -9,10 +9,13 @@ const {
   rewardSubmission,
   FACULTY_REVIEW_XP_REWARD,
   createStudentTask,
-  completeStudentTask,
+  submitStudentTask,
+  verifyStudentTask,
+  performStudentTask,
   listTasksForStudent,
   listTasksCreatedBy,
   listAllTasksForAdmin,
+  getGlobalTaskCompletions,
 } = require("../services/gamificationService.cjs");
 const { requireAuth, requireAnyRole, requireRole } = require("../middleware/authMiddleware.cjs");
 
@@ -96,22 +99,65 @@ router.post("/tasks", requireAuth, requireAnyRole("faculty", "admin"), async (re
   }
 });
 
-router.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
+router.post("/tasks/:taskId/submit", requireAuth, async (req, res) => {
   try {
     if (req.user.role !== "student") {
-      return safeErrorResponse(res, 403, "Only students can complete quests", "Forbidden");
+      return safeErrorResponse(res, 403, "Only students can submit quests", "Forbidden");
     }
     const taskId = String(req.params.taskId || "").trim();
-    const result = await completeStudentTask(taskId, req.user.id);
+    const submissionNotes = req.body?.submissionNotes ? String(req.body.submissionNotes).trim() : null;
+    const result = await submitStudentTask(taskId, req.user.id, submissionNotes);
     if (!result.ok) {
-      return safeErrorResponse(res, 400, result.error || "Cannot complete quest", result.error);
+      return safeErrorResponse(res, 400, result.error || "Cannot submit quest", result.error);
     }
-    return safeSuccessResponse(res, "Quest completed — XP added!", {
+    return safeSuccessResponse(res, "Quest submitted successfully for verification", result);
+  } catch (error) {
+    return safeErrorResponse(res, 500, "Failed to submit quest", error?.message);
+  }
+});
+
+router.post("/tasks/:taskId/verify", requireAuth, requireAnyRole("faculty", "admin"), async (req, res) => {
+  try {
+    const taskId = String(req.params.taskId || "").trim();
+    const targetStudentId = req.body?.studentId ? String(req.body.studentId).trim() : null;
+    
+    // If it's a direct task, student_id is stored on the task. If global, it requires targetStudentId.
+    const result = await verifyStudentTask(taskId, targetStudentId || req.user.id);
+    if (!result.ok) {
+      return safeErrorResponse(res, 400, result.error || "Cannot verify quest", result.error);
+    }
+    return safeSuccessResponse(res, "Quest verified and XP rewarded!", {
       progress: result.progress,
       newAchievements: result.newAchievements || [],
     });
   } catch (error) {
-    return safeErrorResponse(res, 500, "Failed to complete quest", error?.message);
+    return safeErrorResponse(res, 500, "Failed to verify quest", error?.message);
+  }
+});
+
+router.post("/tasks/:taskId/perform", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "student") {
+      return safeErrorResponse(res, 403, "Only students can perform quests", "Forbidden");
+    }
+    const taskId = String(req.params.taskId || "").trim();
+    const result = await performStudentTask(taskId, req.user.id);
+    if (!result.ok) {
+      return safeErrorResponse(res, 400, result.error || "Cannot perform quest", result.error);
+    }
+    return safeSuccessResponse(res, "Quest status updated to performing", result);
+  } catch (error) {
+    return safeErrorResponse(res, 500, "Failed to perform quest", error?.message);
+  }
+});
+
+router.get("/tasks/:taskId/completions", requireAuth, requireAnyRole("faculty", "admin"), async (req, res) => {
+  try {
+    const taskId = String(req.params.taskId || "").trim();
+    const completions = await getGlobalTaskCompletions(taskId);
+    return safeSuccessResponse(res, "Quest completions loaded", completions);
+  } catch (error) {
+    return safeErrorResponse(res, 500, "Failed to load quest completions", error?.message);
   }
 });
 

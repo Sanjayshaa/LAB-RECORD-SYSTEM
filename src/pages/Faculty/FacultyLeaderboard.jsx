@@ -133,6 +133,31 @@ export default function FacultyLeaderboard() {
         avgGrade: s._gradedCount ? Number((s._marksSum / s._gradedCount).toFixed(1)) : 0,
       }));
 
+      // Cross-enrich names from profiles table (authoritative source) to avoid showing
+      // submission-time student_name values that might be stale or wrong.
+      const studentIds = processedStudents.map((s) => s.id).filter(Boolean);
+      if (studentIds.length > 0) {
+        const { data: profileRows } = await supabase
+          .from("profiles")
+          .select("id, name, register_no")
+          .in("id", studentIds);
+        if (Array.isArray(profileRows)) {
+          const profileMap = new Map(profileRows.map((p) => [String(p.id || ""), p]));
+          processedStudents.forEach((s) => {
+            const prof = profileMap.get(s.id);
+            if (!prof) return;
+            const profName = String(prof.name || "").trim();
+            const isFaculty = /^(mr|mrs|ms|miss|dr|prof|sir)\b/i.test(profName) ||
+              profName.toLowerCase().includes("faculty") || profName.toLowerCase().includes("admin");
+            if (profName && !isFaculty) s.name = profName;
+            const profReg = String(prof.register_no || "").trim();
+            if (profReg && profReg !== "-" && profReg !== "null" && (!s.registerNo || s.registerNo === "-")) {
+              s.registerNo = profReg;
+            }
+          });
+        }
+      }
+
       // 2. Fetch Gamification XP Map from manual API (service role bypasses RLS)
       let calculatedXpMap = new Map();
       try {
@@ -539,7 +564,7 @@ export default function FacultyLeaderboard() {
       )}
 
       {leaderboardTab === "quests" && (
-        <FacultyGamificationQuests />
+        <FacultyGamificationQuests subjectId={subjectId} subjectName={subjectName} />
       )}
 
       {/* Student Achievements Modal */}

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { parseEffectiveEndMs, parseStartMs } from "@/lib/examWindow";
 import { useToast } from "@/components/ui/ToastProvider";
-import { GraduationCap, User, Hash, KeyRound, AlertCircle, Sparkles } from "lucide-react";
+import { GraduationCap, User, Hash, KeyRound, AlertCircle, Sparkles, ArrowLeft } from "lucide-react";
 
 export default function ExamLogin() {
   const navigate = useNavigate();
@@ -135,7 +135,16 @@ export default function ExamLogin() {
   };
 
   return (
-    <div className="faculty-bg-vibrant min-h-screen flex items-center justify-center overflow-hidden p-4 text-slate-900">
+    <div className="faculty-bg-vibrant min-h-screen flex items-center justify-center overflow-hidden p-4 text-slate-900 relative">
+      {/* Back Arrow Button (Top Left Corner) */}
+      <button
+        onClick={() => navigate(-1)}
+        className="absolute top-6 left-6 flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors bg-white/50 backdrop-blur-md border border-slate-200/50 px-4 py-2 rounded-xl shadow-sm cursor-pointer z-50 animate-fade-in"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        <span>Back</span>
+      </button>
+
       {/* Decorative gradient orbs */}
       <div className="pointer-events-none absolute right-0 top-0 h-96 w-96 rounded-full bg-blue-200/60 blur-3xl" />
       <div className="pointer-events-none absolute bottom-0 left-0 h-80 w-80 rounded-full bg-indigo-200/60 blur-3xl" />

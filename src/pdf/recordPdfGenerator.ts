@@ -618,11 +618,21 @@ function normalizeExperiments(data: UnifiedStudentDataResult, subjectName?: stri
       const defaultTitle = useOooseTitles
         ? OOSE_EXPERIMENT_TITLES[normalizedNo] || `EXPERIMENT ${normalizedNo}`
         : `EXPERIMENT ${normalizedNo}`;
+      const dateVal =
+        toDisplayDate(rowWithDate.completedAt) ||
+        toDisplayDate(rowWithDate.completed_at) ||
+        toDisplayDate(rowWithDate.submittedAt) ||
+        toDisplayDate(rowWithDate.submitted_at) ||
+        toDisplayDate(rowWithDate.updatedAt) ||
+        toDisplayDate(rowWithDate.updated_at) ||
+        toDisplayDate(rowWithDate.createdAt) ||
+        toDisplayDate(rowWithDate.created_at) ||
+        "";
       return {
         no: normalizedNo,
         orderKey: experimentNoRaw || String(normalizedNo),
         title: cleanText(row.title) || defaultTitle,
-        date: toDisplayDate(rowWithDate.updatedAt) || "",
+        date: dateVal,
         aim,
         procedure,
         program,
@@ -661,11 +671,24 @@ function normalizeExperiments(data: UnifiedStudentDataResult, subjectName?: stri
 }
 
 function topExperimentBox(exp: RecordExperiment) {
+  const displayDate = exp.date ? exp.date : "";
   return {
     table: {
-      widths: [86, "*"],
+      widths: [115, "*"],
       body: [[
-        { text: `Expt. No: ${exp.no}`, bold: true, alignment: "left" as const },
+        {
+          stack: [
+            { text: `Expt. No: ${exp.no}`, bold: true, alignment: "left" as const },
+            {
+              text: `Date: ${displayDate || "___/___/______"}`,
+              bold: true,
+              fontSize: 9.5,
+              color: displayDate ? "#0f172a" : "#64748b",
+              alignment: "left" as const,
+              margin: [0, 2, 0, 0] as [number, number, number, number],
+            },
+          ],
+        },
         { text: exp.title, alignment: "left" as const, bold: true },
       ]],
     },
@@ -971,15 +994,35 @@ function buildFrontPages(record: ManualRecordData, frontMatter: ManualFrontMatte
           table: {
             widths: [145, 20, "*"],
             body: [
-              [{ text: "NAME", bold: true }, { text: ":", bold: true, alignment: "center" as const }, { text: "" }],
-              [{ text: "REG.NO", bold: true }, { text: ":", bold: true, alignment: "center" as const }, { text: "" }],
-              [{ text: "BRANCH", bold: true }, { text: ":", bold: true, alignment: "center" as const }, { text: "" }],
-              [{ text: "YEAR/SEM", bold: true }, { text: ":", bold: true, alignment: "center" as const }, { text: "" }],
+              [
+                { text: "NAME", bold: true },
+                { text: ":", bold: true, alignment: "center" as const },
+                { text: record.studentName ? record.studentName.toUpperCase() : "", bold: true },
+              ],
+              [
+                { text: "REG.NO", bold: true },
+                { text: ":", bold: true, alignment: "center" as const },
+                { text: record.registerNo && record.registerNo !== "N/A" ? record.registerNo : "", bold: true },
+              ],
+              [
+                { text: "BRANCH", bold: true },
+                { text: ":", bold: true, alignment: "center" as const },
+                { text: record.branch ? record.branch.toUpperCase() : "", bold: true },
+              ],
+              [
+                { text: "YEAR/SEM", bold: true },
+                { text: ":", bold: true, alignment: "center" as const },
+                { text: record.yearSemester && record.yearSemester !== "N/A" ? record.yearSemester.toUpperCase() : "", bold: true },
+              ],
             ],
           },
           layout: {
             hLineWidth: () => 1,
             vLineWidth: () => 1,
+            paddingLeft: () => 6,
+            paddingRight: () => 6,
+            paddingTop: () => 5,
+            paddingBottom: () => 5,
           },
           margin: [56, 0, 56, 26] as [number, number, number, number],
         },
@@ -1020,19 +1063,31 @@ function buildFrontPages(record: ManualRecordData, frontMatter: ManualFrontMatte
           margin: [0, 0, 0, 12] as [number, number, number, number],
         },
         {
-          text: "NAME............................................................................................",
+          text: [
+            { text: "NAME : ", bold: true },
+            { text: record.studentName ? record.studentName.toUpperCase() : "............................................................................................", bold: true },
+          ],
           margin: [8, 0, 8, 6] as [number, number, number, number],
         },
         {
-          text: "YEAR........................................SEMESTER........................................",
+          text: [
+            { text: "YEAR / SEMESTER : ", bold: true },
+            { text: record.yearSemester && record.yearSemester !== "N/A" ? record.yearSemester.toUpperCase() : "............................................................................................", bold: true },
+          ],
           margin: [8, 0, 8, 6] as [number, number, number, number],
         },
         {
-          text: "BRANCH.......................................................................................",
+          text: [
+            { text: "BRANCH : ", bold: true },
+            { text: record.branch ? record.branch.toUpperCase() : "............................................................................................", bold: true },
+          ],
           margin: [8, 0, 8, 6] as [number, number, number, number],
         },
         {
-          text: "REGISTER NO.................................................................................",
+          text: [
+            { text: "REGISTER NO : ", bold: true },
+            { text: record.registerNo && record.registerNo !== "N/A" ? record.registerNo : "............................................................................................", bold: true },
+          ],
           margin: [8, 0, 8, 16] as [number, number, number, number],
         },
         {
