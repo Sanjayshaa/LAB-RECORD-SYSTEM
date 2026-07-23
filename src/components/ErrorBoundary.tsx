@@ -22,7 +22,32 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("App error:", error, errorInfo);
+    const message = error?.message || "";
+    if (
+      message.includes("dynamically imported module") ||
+      message.includes("Importing a module script failed") ||
+      message.includes("Loading chunk")
+    ) {
+      const pageRefreshed = sessionStorage.getItem("page_chunk_refreshed");
+      if (!pageRefreshed) {
+        sessionStorage.setItem("page_chunk_refreshed", "true");
+        window.location.reload();
+      }
+    }
   }
+
+  handleTryAgain = () => {
+    const message = this.state.error?.message || "";
+    if (
+      message.includes("dynamically imported module") ||
+      message.includes("Importing a module script failed") ||
+      message.includes("Loading chunk")
+    ) {
+      window.location.reload();
+    } else {
+      this.setState({ hasError: false, error: null });
+    }
+  };
 
   render() {
     if (this.state.hasError && this.state.error) {
@@ -35,8 +60,8 @@ export default class ErrorBoundary extends Component<Props, State> {
               {this.state.error.message}
             </p>
             <button
-              onClick={() => this.setState({ hasError: false, error: null })}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-colors"
+              onClick={this.handleTryAgain}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-medium transition-colors"
             >
               Try again
             </button>

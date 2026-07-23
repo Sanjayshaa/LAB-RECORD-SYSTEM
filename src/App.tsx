@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { ComponentType, lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 
 // Route guard
@@ -7,21 +7,41 @@ import { SubjectProvider } from "./context/SubjectContext";
 import { ToastProvider } from "./components/ui/ToastProvider";
 import LoadingScreen from "./components/ui/LoadingScreen";
 
-const Home = lazy(() => import("./pages/Home"));
-const Login = lazy(() => import("./pages/Login"));
-const FacultyLogin = lazy(() => import("./pages/FacultyLogin"));
-const AdminLogin = lazy(() => import("./pages/AdminLogin"));
-const AuthCallback = lazy(() => import("./pages/AuthCallback"));
-const RoleSetup = lazy(() => import("./pages/Common/RoleSetup"));
-const StudentExam = lazy(() => import("./pages/Exam/StudentExam"));
-const ExamLogin = lazy(() => import("./pages/Exam/ExamLogin"));
+function lazyWithRetry<T extends ComponentType<any>>(
+  componentImport: () => Promise<{ default: T }>
+) {
+  return lazy(async () => {
+    const pageHasBeenRefreshed = sessionStorage.getItem("page_chunk_refreshed");
+    try {
+      const component = await componentImport();
+      sessionStorage.removeItem("page_chunk_refreshed");
+      return component;
+    } catch (error) {
+      if (!pageHasBeenRefreshed) {
+        sessionStorage.setItem("page_chunk_refreshed", "true");
+        window.location.reload();
+        return new Promise<{ default: T }>(() => {});
+      }
+      throw error;
+    }
+  });
+}
+
+const Home = lazyWithRetry(() => import("./pages/Home"));
+const Login = lazyWithRetry(() => import("./pages/Login"));
+const FacultyLogin = lazyWithRetry(() => import("./pages/FacultyLogin"));
+const AdminLogin = lazyWithRetry(() => import("./pages/AdminLogin"));
+const AuthCallback = lazyWithRetry(() => import("./pages/AuthCallback"));
+const RoleSetup = lazyWithRetry(() => import("./pages/Common/RoleSetup"));
+const StudentExam = lazyWithRetry(() => import("./pages/Exam/StudentExam"));
+const ExamLogin = lazyWithRetry(() => import("./pages/Exam/ExamLogin"));
 // @ts-ignore – JSX component without type declaration file
-const ProctorExamPage = lazy(() => import("./components/proctor/ProctorExamPage"));
-const Unauthorized = lazy(() => import("./pages/Unauthorized"));
-const Student = lazy(() => import("./pages/Student"));
-const Faculty = lazy(() => import("./pages/Faculty"));
+const ProctorExamPage = lazyWithRetry(() => import("./components/proctor/ProctorExamPage"));
+const Unauthorized = lazyWithRetry(() => import("./pages/Unauthorized"));
+const Student = lazyWithRetry(() => import("./pages/Student"));
+const Faculty = lazyWithRetry(() => import("./pages/Faculty"));
 // @ts-ignore – JSX component without type declaration file
-const Admin = lazy(() => import("./pages/Admin/AdminRoutes.jsx"));
+const Admin = lazyWithRetry(() => import("./pages/Admin/AdminRoutes.jsx"));
 
 function RouteLoader() {
   return (
