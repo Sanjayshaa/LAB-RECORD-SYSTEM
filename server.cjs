@@ -193,10 +193,13 @@ async function runWithJudge0(language, code) {
 }
 
 /**
- * Try Piston first; if it throws (network / HTTP / rate limit), try Judge0 CE.
- * If Piston returns ok:false for user code, that result is returned (no second run).
+ * Try Judge0 CE directly (or Piston if custom host configured).
  */
 async function runWithCloudChain(language, code) {
+  // Public emkc.org Piston instance is whitelist-only; default directly to Judge0 CE
+  if (PISTON_API_URL.includes("emkc.org")) {
+    return await runWithJudge0(language, code);
+  }
   try {
     return await runWithPiston(language, code);
   } catch (e1) {
