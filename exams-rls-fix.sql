@@ -51,3 +51,12 @@ using (
   )
 );
 
+-- Students / Authenticated: read exams to join exam session
+drop policy if exists "students_can_select_exams" on public.exams;
+create policy "students_can_select_exams"
+on public.exams
+for select
+to authenticated
+using (true);
+
+

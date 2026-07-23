@@ -98,10 +98,9 @@ export default function StudentExam() {
   }, []);
 
   useEffect(() => {
-    if (invalidSession) {
-      const timer = window.setTimeout(() => navigate("/exam/login"), 1200);
-      return () => window.clearTimeout(timer);
-    }
+    if (!invalidSession) return undefined;
+    const timer = window.setTimeout(() => navigate("/exam/login"), 1200);
+    return () => window.clearTimeout(timer);
   }, [invalidSession, navigate]);
 
   useEffect(() => {
@@ -167,11 +166,20 @@ export default function StudentExam() {
         return;
       }
 
-      const endAtMs = computeStudentExamDeadlineMs({
-        start_time: examData.start_time,
-        end_time: examData.end_time,
-        duration_minutes: examData.duration_minutes,
-      });
+      let startSessionMs = Number(localStorage.getItem("exam_start_time"));
+      if (!startSessionMs || !Number.isFinite(startSessionMs)) {
+        startSessionMs = Date.now();
+        localStorage.setItem("exam_start_time", String(startSessionMs));
+      }
+
+      const endAtMs = computeStudentExamDeadlineMs(
+        {
+          start_time: examData.start_time,
+          end_time: examData.end_time,
+          duration_minutes: examData.duration_minutes,
+        },
+        startSessionMs
+      );
       setExamEndTime(endAtMs);
 
       const nowMs = Date.now();
@@ -195,7 +203,7 @@ export default function StudentExam() {
           (row) => row.experiment_no
         );
         setExperiments(list);
-        if (list.length > 0) setSelectedExpId(String(list[0].id));
+        if (list.length > 0 && list[0]?.id != null) setSelectedExpId(String(list[0].id));
       }
 
       setLoading(false);
@@ -207,11 +215,7 @@ export default function StudentExam() {
   const handleSubmit = useCallback(async (auto = false) => {
     if (!exam || !examId || submitting || alreadySubmitted) return;
     if (!registerNo.trim()) return;
-    if (experiments.length === 0) {
-      setError("No experiments are configured for this exam subject. Contact your faculty.");
-      return;
-    }
-    if (!selectedExpId) {
+    if (experiments.length > 0 && !selectedExpId) {
       setError("Select an experiment before submitting.");
       return;
     }
@@ -330,8 +334,7 @@ export default function StudentExam() {
       setRemainingTime(nextRemaining);
       if (
         nextRemaining <= 0 &&
-        !autoSubmittedRef.current &&
-        experiments.length > 0
+        !autoSubmittedRef.current
       ) {
         autoSubmittedRef.current = true;
         void handleSubmit(true);
@@ -341,7 +344,7 @@ export default function StudentExam() {
     tick();
     const timer = window.setInterval(tick, 1000);
     return () => window.clearInterval(timer);
-  }, [examEndTime, alreadySubmitted, loading, handleSubmit, experiments.length]);
+  }, [examEndTime, alreadySubmitted, loading, handleSubmit]);
 
   useEffect(() => {
     if (invalidSession || loading || alreadySubmitted) return undefined;
@@ -545,8 +548,9 @@ export default function StudentExam() {
             {/* Textareas */}
             <div className="grid gap-5">
               {FIELD_CONFIG.map((field) => {
-                const a = ACCENT_MAP[field.accent];
+                const a = ACCENT_MAP[field.accent] || ACCENT_MAP.indigo!;
                 const Icon = field.icon;
+                const setter = fieldSetters[field.key];
                 return (
                   <div key={field.key}>
                     <label htmlFor={`exam-${field.key}`} className="flex items-center gap-2 mb-2 text-sm font-medium">
@@ -558,7 +562,7 @@ export default function StudentExam() {
                     <textarea
                       id={`exam-${field.key}`}
                       value={fieldValues[field.key]}
-                      onChange={(e) => fieldSetters[field.key](e.target.value)}
+                      onChange={(e) => setter?.(e.target.value)}
                       placeholder={field.label}
                       className={`${field.minH} w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 outline-none ${a.border} focus:ring-2 transition-all`}
                       disabled={submitting}

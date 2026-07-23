@@ -21,6 +21,29 @@ export default function ExamLogin() {
     setRoomId(roomFromQuery);
   }, [searchParams]);
 
+  useEffect(() => {
+    const autofillUserProfile = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("name, register_no")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (profile) {
+          if (profile.name) setStudentName((prev) => prev || profile.name || "");
+          if (profile.register_no) setRegisterNo((prev) => prev || profile.register_no || "");
+        }
+      } catch (err) {
+        // Silent catch for optional profile autofill
+      }
+    };
+    void autofillUserProfile();
+  }, []);
+
   const handleJoin = async () => {
     try {
       const cleanRoomId = roomId.trim().toUpperCase();
@@ -122,6 +145,7 @@ export default function ExamLogin() {
       localStorage.setItem("exam_id", exam.id);
       localStorage.setItem("exam_student_name", cleanStudentName);
       localStorage.setItem("exam_register_no", cleanRegisterNo);
+      localStorage.setItem("exam_start_time", String(Date.now()));
 
       setLoading(false);
       toast.success("Exam session started.");
@@ -206,9 +230,20 @@ export default function ExamLogin() {
 
             {/* Error */}
             {error ? (
-              <div className="mt-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                {error}
+              <div className="mt-4 flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+                {error.toLowerCase().includes("login") && (
+                  <button
+                    type="button"
+                    onClick={() => navigate("/login")}
+                    className="mt-1 flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition hover:bg-amber-700"
+                  >
+                    Go to Student Login
+                  </button>
+                )}
               </div>
             ) : null}
 

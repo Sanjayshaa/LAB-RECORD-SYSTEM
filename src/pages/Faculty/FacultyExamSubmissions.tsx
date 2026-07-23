@@ -325,17 +325,41 @@ export default function FacultyExamSubmissions() {
     }
 
     setSaving(true);
-    const { error } = await supabase
+    let { data: updatedRows, error: updateErr } = await supabase
       .from("exam_submissions")
       .update({ marks: marksValue })
-      .eq("id", activeSubmission.id);
+      .eq("id", activeSubmission.id)
+      .select("id, marks");
+
+    // Fallback: update by exam_id and register_no if id query returned 0 rows
+    if ((!updatedRows || updatedRows.length === 0) && examId && activeSubmission.register_no) {
+      const fallbackRes = await supabase
+        .from("exam_submissions")
+        .update({ marks: marksValue })
+        .eq("exam_id", examId)
+        .eq("register_no", activeSubmission.register_no)
+        .select("id, marks");
+      if (fallbackRes.data && fallbackRes.data.length > 0) {
+        updatedRows = fallbackRes.data;
+        updateErr = fallbackRes.error;
+      }
+    }
 
     setSaving(false);
 
-    if (error) {
-      alert(`Failed to save marks: ${error.message}`);
+    if (updateErr || !updatedRows || updatedRows.length === 0) {
+      alert(`Failed to save marks: ${updateErr?.message || "No matching database row updated."}`);
       return;
     }
+
+    // Immediately reflect saved marks in local state UI
+    setSubmissions((prev) =>
+      prev.map((item) =>
+        item.id === activeSubmission.id || (item.register_no === activeSubmission.register_no)
+          ? { ...item, marks: marksValue }
+          : item
+      )
+    );
 
     alert("Marks saved");
     closeModal();

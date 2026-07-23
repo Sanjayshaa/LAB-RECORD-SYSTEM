@@ -108,9 +108,9 @@ export default function ProctorExamPage() {
             suspicion_score: 0,
           })
           .select("id, status")
-          .single();
+          .maybeSingle();
 
-        if (error) {
+        if (error || !createdSession) {
           setWarning("Proctor session could not be created. Exam continues.");
           return;
         }

@@ -5,10 +5,13 @@ import { supabase } from "@/lib/supabase";
 import { sortByExperimentNo } from "@/utils/experimentOrder";
 import { formatDepartmentName } from "@/utils/departmentLabel";
 import { Download, FileText, Search, Users, ClipboardList } from "lucide-react";
+// @ts-ignore – JSX module, no type declaration available
 import ShellCard from "@/components/admin/ShellCard";
+// @ts-ignore – JSX module, no type declaration available
 import EmptyState from "@/components/admin/EmptyState";
-import FadeSwitch from "@/components/admin/FadeSwitch";
+// @ts-ignore – JSX module, no type declaration available
 import AdminShell from "@/layouts/AdminShell";
+
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

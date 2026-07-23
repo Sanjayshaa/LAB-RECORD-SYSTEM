@@ -15,10 +15,12 @@ const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 const RoleSetup = lazy(() => import("./pages/Common/RoleSetup"));
 const StudentExam = lazy(() => import("./pages/Exam/StudentExam"));
 const ExamLogin = lazy(() => import("./pages/Exam/ExamLogin"));
+// @ts-ignore – JSX component without type declaration file
 const ProctorExamPage = lazy(() => import("./components/proctor/ProctorExamPage"));
 const Unauthorized = lazy(() => import("./pages/Unauthorized"));
 const Student = lazy(() => import("./pages/Student"));
 const Faculty = lazy(() => import("./pages/Faculty"));
+// @ts-ignore – JSX component without type declaration file
 const Admin = lazy(() => import("./pages/Admin/AdminRoutes.jsx"));
 
 function RouteLoader() {
@@ -43,6 +45,7 @@ export default function App() {
       <Route path="/exam" element={<Navigate to="/exam/login" replace />} />
       <Route path="/exam/login" element={<ExamLogin />} />
       <Route path="/exam/session" element={<StudentExam />} />
+      <Route path="/exam/start" element={<Navigate to="/exam/session" replace />} />
       <Route path="/exam/:id/proctor" element={<ProctorExamPage />} />
       <Route path="/unauthorized" element={<Unauthorized />} />
 

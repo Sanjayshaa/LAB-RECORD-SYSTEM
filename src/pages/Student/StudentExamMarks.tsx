@@ -72,74 +72,60 @@ export default function StudentExamMarks() {
         return;
       }
 
-      let submissionsRes = await supabase
-        .from("exam_submissions")
-        .select("*")
-        .eq("student_id", user.id)
-        .order("submitted_at", { ascending: false });
-      let submissionRows: ExamSubmissionRow[] = [];
+      // Fetch student profile for register_no fallback
+      const { data: userProfile } = await supabase
+        .from("profiles")
+        .select("register_no")
+        .eq("id", user.id)
+        .maybeSingle();
 
-      if (!submissionsRes.error && Array.isArray(submissionsRes.data) && submissionsRes.data.length > 0) {
-        submissionRows = submissionsRes.data.map((row: Record<string, unknown>) => ({
+      const userRegisterNo = userProfile?.register_no ? String(userProfile.register_no).trim().toUpperCase() : "";
+
+      // Fetch submissions matching student_id, user_id, OR register_no concurrently
+      const queries = [
+        supabase.from("exam_submissions").select("*").eq("student_id", user.id),
+        supabase.from("exam_submissions").select("*").eq("user_id", user.id),
+      ];
+      if (userRegisterNo) {
+        queries.push(
+          supabase.from("exam_submissions").select("*").eq("register_no", userRegisterNo)
+        );
+      }
+
+      const queryResults = await Promise.all(queries);
+      const submissionMap = new Map<string, Record<string, unknown>>();
+
+      queryResults.forEach((res) => {
+        if (!res.error && Array.isArray(res.data)) {
+          res.data.forEach((row: Record<string, unknown>) => {
+            const rowId = String(row.id || "");
+            if (rowId && !submissionMap.has(rowId)) {
+              submissionMap.set(rowId, row);
+            }
+          });
+        }
+      });
+
+      const rawSubmissions = Array.from(submissionMap.values()).sort((a, b) => {
+        const ta = new Date(String(a.submitted_at || a.created_at || 0)).getTime();
+        const tb = new Date(String(b.submitted_at || b.created_at || 0)).getTime();
+        return tb - ta;
+      });
+
+      // Parse submission objects
+      let submissionRows: (ExamSubmissionRow & { raw_subject_id?: string })[] = rawSubmissions.map((row) => {
+        const rawMarks = row.marks ?? row.evaluated_marks ?? row.score ?? row.obtained_marks;
+        const marksNum = rawMarks != null && Number.isFinite(Number(rawMarks)) ? Number(rawMarks) : null;
+        return {
           id: String(row.id || ""),
           exam_id: String(row.exam_id || ""),
           exp_id: String(row.exp_id || row.experiment_id || ""),
           student_name: String(row.student_name || row.name || ""),
           register_no: String(row.register_no || row.register_number || ""),
-          marks:
-            row.marks == null
-              ? Number(row.evaluated_marks ?? row.score ?? row.obtained_marks ?? NaN)
-              : Number(row.marks),
+          marks: marksNum,
           submitted_at: String(row.submitted_at || row.created_at || row.updated_at || ""),
-        }));
-      }
-
-      if (submissionRows.length > 0 && subjectId) {
-        const scoped = await supabase
-          .from("exam_submissions")
-          .select("*")
-          .eq("student_id", user.id)
-          .eq("subject_id", subjectId)
-          .order("submitted_at", { ascending: false });
-        if (!scoped.error && Array.isArray(scoped.data) && scoped.data.length > 0) {
-          submissionRows = scoped.data.map((row: Record<string, unknown>) => ({
-            id: String(row.id || ""),
-            exam_id: String(row.exam_id || ""),
-            exp_id: String(row.exp_id || row.experiment_id || ""),
-            student_name: String(row.student_name || row.name || ""),
-            register_no: String(row.register_no || row.register_number || ""),
-            marks:
-              row.marks == null
-                ? Number(row.evaluated_marks ?? row.score ?? row.obtained_marks ?? NaN)
-                : Number(row.marks),
-            submitted_at: String(row.submitted_at || row.created_at || row.updated_at || ""),
-          }));
-        }
-      }
-
-      if (submissionRows.length === 0) {
-        const altUserId = await supabase
-          .from("exam_submissions")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("submitted_at", { ascending: false });
-        if (!altUserId.error && Array.isArray(altUserId.data)) {
-          submissionRows = altUserId.data.map((row: Record<string, unknown>) => ({
-            id: String(row.id || ""),
-            exam_id: String(row.exam_id || ""),
-            exp_id: String(row.exp_id || row.experiment_id || ""),
-            student_name: String(row.student_name || row.name || ""),
-            register_no: String(row.register_no || row.register_number || ""),
-            marks:
-              row.marks == null
-                ? Number(row.evaluated_marks ?? row.score ?? row.obtained_marks ?? NaN)
-                : Number(row.marks),
-            submitted_at: String(row.submitted_at || row.created_at || row.updated_at || ""),
-          }));
-        }
-      }
-
-      setRows(submissionRows);
+        };
+      });
 
       const examIds = [
         ...new Set(submissionRows.map((row) => String(row.exam_id || "").trim()).filter(Boolean)),
@@ -148,20 +134,37 @@ export default function StudentExamMarks() {
         ...new Set(submissionRows.map((row) => String(row.exp_id || "").trim()).filter(Boolean)),
       ];
 
-      if (examIds.length === 0) {
-        setExamTitleById({});
-      } else {
-        const examsRes = await supabase.from("exams").select("id, title").in("id", examIds);
-        if (!examsRes.error) {
-          const map: Record<string, string> = {};
-          ((examsRes.data || []) as ExamRow[]).forEach((row) => {
-            map[String(row.id)] = String(row.title || "").trim() || `Exam ${row.id}`;
+      const examSubjectMap: Record<string, string> = {};
+      const examTitleMap: Record<string, string> = {};
+
+      if (examIds.length > 0) {
+        const { data: examsData } = await supabase
+          .from("exams")
+          .select("id, title, subject_id")
+          .in("id", examIds);
+        if (Array.isArray(examsData)) {
+          examsData.forEach((row: { id: string; title: string | null; subject_id?: string | null }) => {
+            const id = String(row.id);
+            examTitleMap[id] = String(row.title || "").trim() || `Exam ${id}`;
+            if (row.subject_id) {
+              examSubjectMap[id] = String(row.subject_id).trim();
+            }
           });
-          setExamTitleById(map);
-        } else {
-          setExamTitleById({});
         }
       }
+
+      setExamTitleById(examTitleMap);
+
+      // Filter by subjectId if URL subject parameter is provided
+      if (subjectId) {
+        submissionRows = submissionRows.filter((row) => {
+          if (!row.exam_id) return false;
+          const subIdForExam = examSubjectMap[row.exam_id];
+          return subIdForExam === subjectId;
+        });
+      }
+
+      setRows(submissionRows);
 
       if (expIds.length === 0) {
         setExperimentTitleById({});
@@ -199,6 +202,25 @@ export default function StudentExamMarks() {
 
   useEffect(() => {
     void fetchData();
+
+    const channel = supabase
+      .channel("student_exam_marks_live")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "exam_submissions",
+        },
+        () => {
+          void fetchData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchData]);
 
   const evaluatedCount = useMemo(

@@ -39,13 +39,18 @@ export function computeExamPhase(nowMs: number, input: ExamScheduleInput): ExamP
 }
 
 /**
- * Student countdown deadline: earlier of duration window and configured end when both exist.
- * No minimum-duration clamp (fixes bogus 2h floor).
+ * Student countdown deadline: earlier of student's duration window (from session start)
+ * and configured exam end_time when both exist.
  */
-export function computeStudentExamDeadlineMs(input: ExamScheduleInput): number {
-  const startMs = parseStartMs(input.start_time ?? null) ?? Date.now();
+export function computeStudentExamDeadlineMs(
+  input: ExamScheduleInput,
+  studentJoinedMs?: number | null
+): number {
+  const joinedMs = studentJoinedMs && Number.isFinite(studentJoinedMs)
+    ? studentJoinedMs
+    : (parseStartMs(input.start_time ?? null) ?? Date.now());
   const durMin = Number(input.duration_minutes) || 0;
-  const fromDuration = durMin > 0 ? startMs + durMin * 60 * 1000 : null;
+  const fromDuration = durMin > 0 ? joinedMs + durMin * 60 * 1000 : null;
   let fromEnd: number | null = null;
   if (input.end_time) {
     const t = new Date(input.end_time).getTime();
@@ -54,5 +59,5 @@ export function computeStudentExamDeadlineMs(input: ExamScheduleInput): number {
   if (fromEnd != null && fromDuration != null) return Math.min(fromEnd, fromDuration);
   if (fromEnd != null) return fromEnd;
   if (fromDuration != null) return fromDuration;
-  return startMs + 60 * 60 * 1000;
+  return joinedMs + 60 * 60 * 1000;
 }
