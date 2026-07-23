@@ -60,6 +60,10 @@ def _derive_violation(face_count: int, phone_detected: bool) -> Optional[str]:
   return None
 
 
+@app.get("/")
+async def root() -> dict:
+  return {"message": "AI Proctor Detection Service is running. Visit /docs for API documentation."}
+
 @app.get("/health")
 async def health() -> dict:
   return {"status": "ok"}
