@@ -68,6 +68,8 @@ export default function CodeEditor({
   const displayName = currentLanguage?.name || "Python";
   const monacoLanguage = MONACO_LANGUAGE_MAP[language] || "plaintext";
 
+  const needsInput = /input\(|cin|Scanner|sys\.stdin|readline|readLine|gets/i.test(value);
+
   return (
     <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
       {/* TOOLBAR */}
@@ -106,13 +108,20 @@ export default function CodeEditor({
             <button
               type="button"
               onClick={() => setShowInputPanel(!showInputPanel)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition flex items-center gap-1.5 ${
                 showInputPanel || customInput.trim()
                   ? "border-indigo-500 bg-indigo-950/60 text-indigo-300"
-                  : "border-slate-700 bg-slate-800 text-slate-400 hover:bg-slate-700"
+                  : needsInput
+                    ? "border-amber-500/60 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50 animate-pulse"
+                    : "border-slate-700 bg-slate-800 text-slate-400 hover:bg-slate-700"
               }`}
             >
-              {showInputPanel ? "Hide Stdin Input" : "Custom Input (stdin)"}
+              <span>{showInputPanel ? "Hide Stdin Input" : "Custom Input (stdin)"}</span>
+              {needsInput && !customInput.trim() && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/30 text-[10px] text-amber-200 font-semibold">
+                  Input Needed
+                </span>
+              )}
             </button>
           )}
         </div>

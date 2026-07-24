@@ -144,7 +144,7 @@ async function runWithJudge0(language, code, input = "") {
   if (typeof fetch !== "function") {
     throw new Error("Node 18+ required for Judge0 runner (global fetch).");
   }
-  const stdinVal = input != null && String(input).length > 0 ? String(input) : "\n";
+  const stdinVal = input != null && String(input).length > 0 ? String(input) : "0\n";
   const url = `${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=true`;
   const res = await fetch(url, {
     method: "POST",
@@ -546,7 +546,7 @@ app.post("/run", runLimiter, async (req, res) => {
 
     fs.writeFileSync(
       path.join(jobDir, "input.txt"),
-      input != null && String(input).length > 0 ? String(input) : "\n"
+      input != null && String(input).length > 0 ? String(input) : "0\n"
     );
 
     const inputRedir = " < /code/input.txt";
