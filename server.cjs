@@ -132,7 +132,7 @@ async function runWithPiston(language, code) {
 /**
  * Judge0 CE — second free option when Piston is down / rate-limited (no API key on public CE).
  */
-async function runWithJudge0(language, code) {
+async function runWithJudge0(language, code, input = "") {
   const lang = String(language || "").toLowerCase();
   if (lang === "sql") {
     throw new Error("SQL runner needs Docker; run locally or use a VPS with Docker.");
@@ -144,6 +144,7 @@ async function runWithJudge0(language, code) {
   if (typeof fetch !== "function") {
     throw new Error("Node 18+ required for Judge0 runner (global fetch).");
   }
+  const stdinVal = input != null && String(input).length > 0 ? String(input) : "\n";
   const url = `${JUDGE0_API_URL}/submissions?base64_encoded=false&wait=true`;
   const res = await fetch(url, {
     method: "POST",
@@ -151,6 +152,7 @@ async function runWithJudge0(language, code) {
     body: JSON.stringify({
       source_code: String(code || ""),
       language_id: languageId,
+      stdin: stdinVal,
     }),
   });
   const text = await res.text();
@@ -196,14 +198,14 @@ async function runWithJudge0(language, code) {
  * Try Piston first; if it throws (network / HTTP / rate limit), try Judge0 CE.
  * If Piston returns ok:false for user code, that result is returned (no second run).
  */
-async function runWithCloudChain(language, code) {
+async function runWithCloudChain(language, code, input = "") {
   try {
-    return await runWithPiston(language, code);
+    return await runWithPiston(language, code, input);
   } catch (e1) {
     const msg = e1 instanceof Error ? e1.message : String(e1);
     console.warn("[run] Piston failed, trying Judge0:", msg);
     try {
-      return await runWithJudge0(language, code);
+      return await runWithJudge0(language, code, input);
     } catch (e2) {
       const msg2 = e2 instanceof Error ? e2.message : String(e2);
       throw new Error(`Cloud runners failed — Piston: ${msg} | Judge0: ${msg2}`);
@@ -542,10 +544,12 @@ app.post("/run", runLimiter, async (req, res) => {
 
     let fileName, image, cmd;
 
-    const hasInput = Boolean(input && String(input).trim().length > 0);
-    fs.writeFileSync(path.join(jobDir, "input.txt"), String(input || ""));
+    fs.writeFileSync(
+      path.join(jobDir, "input.txt"),
+      input != null && String(input).length > 0 ? String(input) : "\n"
+    );
 
-    const inputRedir = hasInput ? " < /code/input.txt" : "";
+    const inputRedir = " < /code/input.txt";
 
     switch (language) {
       case "python":

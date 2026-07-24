@@ -441,6 +441,7 @@ export default function StudentExperiment() {
 
   const [codeLanguage, setCodeLanguage] = useState("python");
   const [codeValue, setCodeValue] = useState(getTemplate("python"));
+  const [customInput, setCustomInput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [codeOutput, setCodeOutput] = useState("");
   const [codeError, setCodeError] = useState("");
@@ -1039,7 +1040,7 @@ export default function StudentExperiment() {
       }
 
       const startedAt = Date.now();
-      const runResult = await executeCode(languageToUse, codeValue);
+      const runResult = await executeCode(languageToUse, codeValue, customInput);
       const elapsed = Date.now() - startedAt;
       const minSpinner = 750;
       if (elapsed < minSpinner) {
@@ -1853,6 +1854,8 @@ export default function StudentExperiment() {
                                 }}
                                 onRun={isReadOnly ? undefined : handleRunCode}
                                 isRunning={isRunning}
+                                customInput={customInput}
+                                onCustomInputChange={isReadOnly ? undefined : setCustomInput}
                               />
                             </Suspense>
                           </div>

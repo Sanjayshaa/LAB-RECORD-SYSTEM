@@ -1,4 +1,4 @@
-export async function executeCode(language: string, code: string) {
+export async function executeCode(language: string, code: string, input: string = "") {
   const base = String(import.meta.env.VITE_MANUAL_API_URL || "http://localhost:7001").replace(/\/+$/, "");
   try {
     const response = await fetch(`${base}/run`, {
@@ -8,7 +8,8 @@ export async function executeCode(language: string, code: string) {
       },
       body: JSON.stringify({
         language: (language || "python").toLowerCase(),
-        code: code || ""
+        code: code || "",
+        input: input || ""
       })
     });
 

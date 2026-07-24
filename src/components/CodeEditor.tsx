@@ -9,6 +9,8 @@ interface CodeEditorProps {
   onLanguageChange?: (language: string) => void;
   onRun?: () => void;
   isRunning?: boolean;
+  customInput?: string;
+  onCustomInputChange?: (value: string) => void;
 }
 
 const LANGUAGES = [
@@ -42,8 +44,11 @@ export default function CodeEditor({
   onLanguageChange,
   onRun,
   isRunning = false,
+  customInput = "",
+  onCustomInputChange,
 }: CodeEditorProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [showInputPanel, setShowInputPanel] = useState(false);
 
   const handleEditorChange = useCallback(
     (value: string | undefined) => {
@@ -68,31 +73,47 @@ export default function CodeEditor({
       {/* TOOLBAR */}
       <div className="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800">
         {/* Language Selector */}
-        <div className="relative">
-          <button
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 hover:bg-slate-700 transition"
-          >
-            <span className="font-medium">{displayName}</span>
-            <ChevronDown className="w-4 h-4 text-slate-400" />
-          </button>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <button
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 hover:bg-slate-700 transition"
+            >
+              <span className="font-medium">{displayName}</span>
+              <ChevronDown className="w-4 h-4 text-slate-400" />
+            </button>
 
-          {isDropdownOpen && (
-            <div className="absolute top-full left-0 mt-1 w-40 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden">
-              {LANGUAGES.map((lang) => (
-                <button
-                  key={lang.id}
-                  onClick={() => handleLanguageSelect(lang.id)}
-                  className={`w-full px-4 py-2 text-left text-sm hover:bg-slate-700 transition ${
-                    language === lang.id
-                      ? "text-blue-400 bg-slate-700/50"
-                      : "text-slate-200"
-                  }`}
-                >
-                  {lang.name}
-                </button>
-              ))}
-            </div>
+            {isDropdownOpen && (
+              <div className="absolute top-full left-0 mt-1 w-40 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                {LANGUAGES.map((lang) => (
+                  <button
+                    key={lang.id}
+                    onClick={() => handleLanguageSelect(lang.id)}
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-slate-700 transition ${
+                      language === lang.id
+                        ? "text-blue-400 bg-slate-700/50"
+                        : "text-slate-200"
+                    }`}
+                  >
+                    {lang.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {onCustomInputChange && (
+            <button
+              type="button"
+              onClick={() => setShowInputPanel(!showInputPanel)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                showInputPanel || customInput.trim()
+                  ? "border-indigo-500 bg-indigo-950/60 text-indigo-300"
+                  : "border-slate-700 bg-slate-800 text-slate-400 hover:bg-slate-700"
+              }`}
+            >
+              {showInputPanel ? "Hide Stdin Input" : "Custom Input (stdin)"}
+            </button>
           )}
         </div>
 
@@ -107,6 +128,21 @@ export default function CodeEditor({
           {isRunning ? "Running..." : "Run Code"}
         </button>
       </div>
+
+      {/* STDIN INPUT PANEL */}
+      {showInputPanel && onCustomInputChange && (
+        <div className="p-3 bg-slate-900/90 border-b border-slate-800">
+          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+            Program Input (stdin)
+          </label>
+          <textarea
+            value={customInput}
+            onChange={(e) => onCustomInputChange(e.target.value)}
+            placeholder="Type input data for input() / Scanner / cin here..."
+            className="w-full h-20 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 font-mono outline-none focus:border-indigo-500 transition"
+          />
+        </div>
+      )}
 
       {/* MONACO EDITOR */}
       <div className="h-96">
