@@ -567,21 +567,26 @@ app.post("/run", runLimiter, async (req, res) => {
       case "c":
         fileName = "main.c";
         image = "gcc";
-        cmd = `sh -c 'gcc /code/main.c -o /code/main && /code/main${inputRedir}'`;
+        cmd = `sh -c 'gcc -O2 /code/main.c -o /code/main -lm && /code/main${inputRedir}'`;
         break;
 
       case "cpp":
         fileName = "main.cpp";
         image = "gcc";
-        cmd = `sh -c 'g++ /code/main.cpp -o /code/main && /code/main${inputRedir}'`;
+        cmd = `sh -c 'g++ -O2 -std=c++17 /code/main.cpp -o /code/main -lm && /code/main${inputRedir}'`;
         break;
 
       case "java": {
-        const classMatch = code.match(/public\s+class\s+([A-Za-z0-9_]+)/);
-        const className = classMatch ? classMatch[1] : "Main";
+        const publicClassMatch = code.match(/public\s+class\s+([A-Za-z0-9_]+)/);
+        const anyClassMatch = code.match(/class\s+([A-Za-z0-9_]+)/);
+        const className = publicClassMatch
+          ? publicClassMatch[1]
+          : anyClassMatch
+            ? anyClassMatch[1]
+            : "Main";
         fileName = `${className}.java`;
         image = "eclipse-temurin:17";
-        cmd = `sh -c 'javac /code/${className}.java && java -cp /code ${className}${inputRedir}'`;
+        cmd = `sh -c 'javac /code/*.java && java -cp /code ${className}${inputRedir}'`;
         break;
       }
 
@@ -645,14 +650,26 @@ if output_lines:
       );
     }
 
+    const containerName = `runner-${jobId}`;
     const dockerCmd = `
 docker run --rm \
+--name ${containerName} \
+--memory=512m \
+--cpus=1.0 \
+--pids-limit=64 \
+--network=none \
+-w /code \
 -v "${jobDir}":/code \
 ${image} \
 ${cmd}
 `;
 
-    exec(dockerCmd, { timeout: DOCKER_RUN_TIMEOUT_MS }, async (err, stdout, stderr) => {
+    exec(dockerCmd, { timeout: DOCKER_RUN_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 }, async (err, stdout, stderr) => {
+      // Force kill container if timed out / orphaned
+      if (err && (err.killed || err.signal === "SIGTERM")) {
+        exec(`docker rm -f ${containerName}`, () => {});
+      }
+
       fs.rmSync(jobDir, { recursive: true, force: true });
 
       const tryPiston =
