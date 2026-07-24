@@ -26,6 +26,7 @@ import {
   setSelectedSubjectInStorage,
   useSelectedSubject,
 } from "@/context/SubjectContext";
+// @ts-ignore – JS file without declaration file
 import { getStatusConfig } from "@/utils/statusConfig";
 import { useToast } from "@/components/ui/ToastProvider";
 import useExperimentProgress from "@/hooks/useExperimentProgress";
@@ -264,7 +265,7 @@ async function persistAiEvaluationAsync(params: {
     await updateStudentExperimentAiAsync({
       studentId: params.studentId,
       expId: params.expId,
-      aiMarks: Number(evaluated.marksOutOf10 || 0),
+      aiMarks: Number((evaluated as any).marksOutOf10 || 0),
       breakdown: evaluated.breakdown,
     });
 
@@ -1536,7 +1537,7 @@ export default function StudentExperiment() {
     const idx = order.indexOf(key);
     if (idx === 0) return true;
     const prevKey = order[idx - 1];
-    return softSectionReady[prevKey];
+    return prevKey ? Boolean(softSectionReady[prevKey]) : true;
   }, [softSectionReady]);
 
   const getSectionPreview = useCallback((key: SectionKey): string => {
@@ -1561,9 +1562,11 @@ export default function StudentExperiment() {
     const idx = STEP_ORDER.indexOf(currentKey);
     if (idx < STEP_ORDER.length - 1) {
       const nextKey = STEP_ORDER[idx + 1];
-      const el = sectionRefs.current[nextKey];
-      if (el) {
-        window.setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+      if (nextKey) {
+        const el = sectionRefs.current[nextKey];
+        if (el) {
+          window.setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+        }
       }
     }
   }, []);
@@ -1914,7 +1917,7 @@ export default function StudentExperiment() {
                                 : "cursor-not-allowed bg-slate-100 text-slate-500"
                             }`}
                           >
-                            Next: {STEP_LABELS[STEP_ORDER[stepIdx + 1]]}
+                            Next: {STEP_ORDER[stepIdx + 1] ? STEP_LABELS[STEP_ORDER[stepIdx + 1]] : ""}
                             <ChevronRight className="h-3.5 w-3.5" />
                           </button>
                         )}
