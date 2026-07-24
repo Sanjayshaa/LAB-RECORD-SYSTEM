@@ -1747,6 +1747,7 @@ export default function StudentExperiment() {
           const isComplete = sec.state === "completed";
           const isActive = sec.state === "active";
           const isCollapsed = isComplete && !expandedSections.has(key);
+          const nextStepKey = STEP_ORDER[stepIdx + 1];
 
           return (
             <motion.div
@@ -1917,7 +1918,7 @@ export default function StudentExperiment() {
                                 : "cursor-not-allowed bg-slate-100 text-slate-500"
                             }`}
                           >
-                            Next: {STEP_ORDER[stepIdx + 1] ? STEP_LABELS[STEP_ORDER[stepIdx + 1]] : ""}
+                            Next: {nextStepKey ? STEP_LABELS[nextStepKey] : ""}
                             <ChevronRight className="h-3.5 w-3.5" />
                           </button>
                         )}
