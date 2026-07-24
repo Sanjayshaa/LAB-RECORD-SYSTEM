@@ -57,6 +57,11 @@ export default function OutputPanel({
             <pre className="text-red-300 whitespace-pre-wrap break-all bg-red-950/30 p-3 rounded-lg border border-red-900/50">
               {error}
             </pre>
+            {error.includes("InputMismatchException") && (
+              <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-lg text-amber-200 text-xs">
+                💡 <strong>Input Format Tip:</strong> Java <code>Scanner.nextInt()</code> reads raw numbers (e.g. <code>1 3</code> or <code>1\n3</code>). Please remove variable assignments like <code>a=1</code> from your <strong>PROGRAM INPUT (STDIN)</strong> box.
+              </div>
+            )}
           </div>
         ) : output === "" ? (
           <div className="space-y-2">

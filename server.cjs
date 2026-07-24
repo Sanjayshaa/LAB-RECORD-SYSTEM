@@ -576,11 +576,14 @@ app.post("/run", runLimiter, async (req, res) => {
         cmd = `sh -c 'g++ /code/main.cpp -o /code/main && /code/main${inputRedir}'`;
         break;
 
-      case "java":
-        fileName = "Main.java";
+      case "java": {
+        const classMatch = code.match(/public\s+class\s+([A-Za-z0-9_]+)/);
+        const className = classMatch ? classMatch[1] : "Main";
+        fileName = `${className}.java`;
         image = "eclipse-temurin:17";
-        cmd = `sh -c 'javac /code/Main.java && java -cp /code Main${inputRedir}'`;
+        cmd = `sh -c 'javac /code/${className}.java && java -cp /code ${className}${inputRedir}'`;
         break;
+      }
 
       case "go":
         fileName = "main.go";

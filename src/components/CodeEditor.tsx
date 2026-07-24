@@ -147,7 +147,7 @@ export default function CodeEditor({
           <textarea
             value={customInput}
             onChange={(e) => onCustomInputChange(e.target.value)}
-            placeholder="Type input data for input() / Scanner / cin here..."
+            placeholder="Enter raw values only separated by spaces or lines (e.g. 1 3 or 1\n3). Do NOT include variable names like a=1."
             className="w-full h-20 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 font-mono outline-none focus:border-indigo-500 transition"
           />
         </div>
