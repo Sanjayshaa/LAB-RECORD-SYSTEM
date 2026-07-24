@@ -193,13 +193,10 @@ async function runWithJudge0(language, code) {
 }
 
 /**
- * Try Judge0 CE directly (or Piston if custom host configured).
+ * Try Piston first; if it throws (network / HTTP / rate limit), try Judge0 CE.
+ * If Piston returns ok:false for user code, that result is returned (no second run).
  */
 async function runWithCloudChain(language, code) {
-  // Public emkc.org Piston instance is whitelist-only; default directly to Judge0 CE
-  if (PISTON_API_URL.includes("emkc.org")) {
-    return await runWithJudge0(language, code);
-  }
   try {
     return await runWithPiston(language, code);
   } catch (e1) {
@@ -545,74 +542,58 @@ app.post("/run", runLimiter, async (req, res) => {
 
     let fileName, image, cmd;
 
-    // Check if input is provided
-    const hasInput = input && input.trim().length > 0;
-    const inputCmd = hasInput ? `echo "${input.replace(/"/g, '\\"')}" | ` : "";
+    const hasInput = Boolean(input && String(input).trim().length > 0);
+    fs.writeFileSync(path.join(jobDir, "input.txt"), String(input || ""));
+
+    const inputRedir = hasInput ? " < /code/input.txt" : "";
 
     switch (language) {
       case "python":
         fileName = "main.py";
         image = "python:3.10";
-        cmd = hasInput 
-          ? `sh -c 'echo "${input.replace(/"/g, '\\"')}" | python /code/main.py'`
-          : "python /code/main.py";
+        cmd = `sh -c 'python /code/main.py${inputRedir}'`;
         break;
 
       case "javascript":
         fileName = "main.js";
         image = "node:18";
-        cmd = hasInput
-          ? `sh -c 'echo "${input.replace(/"/g, '\\"')}" | node /code/main.js'`
-          : "node /code/main.js";
+        cmd = `sh -c 'node /code/main.js${inputRedir}'`;
         break;
 
       case "c":
         fileName = "main.c";
         image = "gcc";
-        cmd = hasInput
-          ? `sh -c 'gcc /code/main.c -o /code/main && echo "${input.replace(/"/g, '\\"')}" | /code/main'`
-          : "sh -c 'gcc /code/main.c -o /code/main && /code/main'";
+        cmd = `sh -c 'gcc /code/main.c -o /code/main && /code/main${inputRedir}'`;
         break;
 
       case "cpp":
         fileName = "main.cpp";
         image = "gcc";
-        cmd = hasInput
-          ? `sh -c 'g++ /code/main.cpp -o /code/main && echo "${input.replace(/"/g, '\\"')}" | /code/main'`
-          : "sh -c 'g++ /code/main.cpp -o /code/main && /code/main'";
+        cmd = `sh -c 'g++ /code/main.cpp -o /code/main && /code/main${inputRedir}'`;
         break;
 
       case "java":
         fileName = "Main.java";
         image = "eclipse-temurin:17";
-        cmd = hasInput
-          ? `sh -c 'javac /code/Main.java && echo "${input.replace(/"/g, '\\"')}" | java -cp /code Main'`
-          : "sh -c 'javac /code/Main.java && java -cp /code Main'";
+        cmd = `sh -c 'javac /code/Main.java && java -cp /code Main${inputRedir}'`;
         break;
 
       case "go":
         fileName = "main.go";
         image = "golang:1.22-alpine";
-        cmd = hasInput
-          ? `sh -c 'echo "${input.replace(/"/g, '\\"')}" | go run /code/main.go'`
-          : "go run /code/main.go";
+        cmd = `sh -c 'go run /code/main.go${inputRedir}'`;
         break;
 
       case "ruby":
         fileName = "main.rb";
         image = "ruby:3.3";
-        cmd = hasInput
-          ? `sh -c 'echo "${input.replace(/"/g, '\\"')}" | ruby /code/main.rb'`
-          : "ruby /code/main.rb";
+        cmd = `sh -c 'ruby /code/main.rb${inputRedir}'`;
         break;
 
       case "php":
         fileName = "main.php";
-        /** Alpine variant: much smaller/faster pull than php:8.3-cli (avoids pull timeouts). */
         image = "php:8.3-cli-alpine";
-        cmd = hasInput
-          ? `sh -c 'echo "${input.replace(/"/g, '\\"')}" | php /code/main.php'`
-          : "php /code/main.php";
+        cmd = `sh -c 'php /code/main.php${inputRedir}'`;
         break;
 
       case "sql":
